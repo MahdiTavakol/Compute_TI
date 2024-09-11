@@ -11,7 +11,7 @@
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
 
-#include "compute_ti.h"
+#include "compute_thermo_integ.h"
 
 #include "atom.h"
 #include "comm.h"
@@ -37,7 +37,7 @@ enum {PAIR = 1 << 0,
 
 /* ---------------------------------------------------------------------- */
 
-ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
+ComputeThermoInteg::ComputeThermoInteg(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
 {
   if (narg < 8) error->all(FLERR, "Illegal number of arguments in compute ti");
 
@@ -104,7 +104,7 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
 }
 
 /* ---------------------------------------------------------------------- */
-ComputeTI::~ComputeTI()
+ComputeThermoInteg::~ComputeThermoInteg()
 {
    deallocate_storage();
    memory->destroy(epsilon_init);
@@ -115,7 +115,7 @@ ComputeTI::~ComputeTI()
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeTI::init()
+void ComputeThermoInteg::init()
 {
    std::map<std::string, std::string> pair_params;
    
@@ -170,7 +170,7 @@ void ComputeTI::init()
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeTI::compute_vector()
+void ComputeThermoInteg::compute_vector()
 {
    vector[0] = 0.0;
    vector[1] = 0.0;
@@ -183,7 +183,7 @@ void ComputeTI::compute_vector()
 /* ---------------------------------------------------------------------- */
 
 template <int parameter, int mode>  
-double ComputeTI::compute_du(int &delta)
+double ComputeThermoInteg::compute_du(int &delta)
 {
    double uA, uB, du_dl;
    double lA = -delta;
@@ -203,7 +203,7 @@ double ComputeTI::compute_du(int &delta)
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeTI::allocate_storage()
+void ComputeThermoInteg::allocate_storage()
 {
   /* It should be nmax since in the case that 
      the newton flag is on the force in the 
@@ -224,7 +224,7 @@ void ComputeTI::allocate_storage()
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeTI::deallocate_storage()
+void ComputeThermoInteg::deallocate_storage()
 {
   memory->destroy(q_orig);
   memory->destroy(f_orig);
@@ -243,21 +243,21 @@ void ComputeTI::deallocate_storage()
    ---------------------------------------------------------------------- */
 
 template  <int direction>
-void ComputeTI::forward_reverse_copy(double &a,double &b)
+void ComputeThermoInteg::forward_reverse_copy(double &a,double &b)
 {
    if (direction == 1) a = b;
    if (direction == -1) b = a;
 }
 
 template  <int direction>
-void ComputeTI::forward_reverse_copy(double* a,double* b, int i)
+void ComputeThermoInteg::forward_reverse_copy(double* a,double* b, int i)
 {
    if (direction == 1) a[i] = b[i];
    if (direction == -1) b[i] = a[i];
 }
 
 template  <int direction>
-void ComputeTI::forward_reverse_copy(double** a,double** b, int i, int j)
+void ComputeThermoInteg::forward_reverse_copy(double** a,double** b, int i, int j)
 {
    if (direction == 1) a[i][j] = b[i][j];
    if (direction == -1) b[i][j] = a[i][j];
@@ -271,7 +271,7 @@ void ComputeTI::forward_reverse_copy(double** a,double** b, int i, int j)
 ------------------------------------------------------------------------- */
 
 template <int direction>
-void ComputeTI::backup_restore_qfev()
+void ComputeThermoInteg::backup_restore_qfev()
 {
   int i;
 
@@ -327,7 +327,7 @@ void ComputeTI::backup_restore_qfev()
 
    -------------------------------------------------------------- */
 template <int parameter, int mode>   
-void ComputeTI::modify_epsilon_q(double& delta)
+void ComputeThermoInteg::modify_epsilon_q(double& delta)
 {
   int nlocal = atom->nlocal;
   int * mask = atom->mask;
@@ -376,7 +376,7 @@ void ComputeTI::modify_epsilon_q(double& delta)
 
 /* --------------------------------------------------------------------- */
 
-void ComputeTI::count_atoms(selected_type selected)
+void ComputeThermoInteg::count_atoms(selected_type selected)
 {
     int nlocal = atom->nlocal; 
     double *q = atom->q;
@@ -411,7 +411,7 @@ void ComputeTI::count_atoms(selected_type selected)
    modify force and kspace in lammps according
    ---------------------------------------------------------------------- */
 
-void ComputeTI::update_lmp() {
+void ComputeThermoInteg::update_lmp() {
    int eflag = 1;
    int vflag = 1;
    timer->stamp();
@@ -430,7 +430,7 @@ void ComputeTI::update_lmp() {
 
 /* --------------------------------------------------------------------- */
 
-void ComputeTI::compute_q_total()
+void ComputeThermoInteg::compute_q_total()
 {
    double * q = atom->q;
    double nlocal = atom->nlocal;
@@ -449,7 +449,7 @@ void ComputeTI::compute_q_total()
 
 /* --------------------------------------------------------------------- */
 
-double ComputeTI::compute_epair()
+double ComputeThermoInteg::compute_epair()
 {
    //if (update->eflag_global != update->ntimestep)
    //   error->all(FLERR,"Energy was not tallied on the needed timestep");
