@@ -32,21 +32,27 @@ class ComputeTI : public Compute {
   void compute_vector() override;
 
  private:
-void compute_us();
-void allocate_storage();
-void deallocate_storage();
-template  <int direction>
-void forward_reverse_copy(double &,double &);
-template  <int direction>
-void forward_reverse_copy(double* ,double* , int );
-template  <int direction>
-void forward_reverse_copy(double** ,double** , int , int );
-template <int direction>
-void backup_restore_qfev();
-void modify_epsilon_q();
-void update_lmp();
-void compute_q_total();
-void compute_epair();
+
+  // Pair style parameters
+  char * pstyle, * pparam1;
+  Pair * pair1;
+  int pdim1;
+
+  void compute_us();
+  void allocate_storage();
+  void deallocate_storage();
+  template  <int direction>
+  void forward_reverse_copy(double &,double &);
+  template  <int direction>
+  void forward_reverse_copy(double* ,double* , int );
+  template  <int direction>
+  void forward_reverse_copy(double** ,double** , int , int );
+  template <int direction>
+  void backup_restore_qfev();
+  void modify_epsilon_q();
+  void update_lmp();
+  void compute_q_total();
+  void compute_epair();
 };
 
 }    // namespace LAMMPS_NS
