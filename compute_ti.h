@@ -29,7 +29,7 @@ class ComputeTI : public Compute {
   ComputeTI(class LAMMPS *, int, char **);
   ~ComputeTI() override;
   void init() override;
-  void compute_scaler() override;
+  void compute_vector() override;
 
  private:
   // Parameters
