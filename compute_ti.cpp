@@ -43,11 +43,11 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
   size_vector = ??;
   extvector = 0;
 
-  const int ntypes = atom->ntypes;
   vector = new double[size_vector];
   
 
-  dlambda = utils::numeric(FLERR, arg[3], false, lmp);
+  pstyle = utils::strdup(arg[3]);
+  delta = utils::numeric(FLERR, arg[4], false, lmp);
 
 
 
