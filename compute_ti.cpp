@@ -31,6 +31,9 @@
 
 using namespace LAMMPS_NS;
 
+enum {SINGLE,DUAL};
+enum {PAIR = 1 << 0,
+      CHARGE = 1 << 1};
 
 /* ---------------------------------------------------------------------- */
 
@@ -38,15 +41,17 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
 {
   if (narg < 8) error->all(FLERR, "Illegal number of arguments in compute ti");
 
-  scalar_flag = 1;
-  vector_flag = 0;
+  scalar_flag = 0;
+  vector_flag = 1;
   size_vector = 0;
   extvector = 0;
+
+  vector = new double[2];
 
   int iarg;  
   if (strcmp(arg[3], "dual") == 0)
   {
-      dual = true;
+      mode = DUAL;
       typeA = utils::numeric(FLERR, arg[4], false, lmp);
       if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeA);
       typeB = utils::numeric(FLERR, arg[5], false, lmp);
@@ -55,7 +60,7 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
   }
   else if (strcmp(arg[3], "single") == 0)
   {
-      dual = false;
+      mode = SINGLE;
       typeA = utils::numeric(FLERR, arg[4], false, lmp);
       if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeA);
       iarg = 5;
@@ -67,12 +72,14 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
   {
       if (strcmp(arg[iarg], "pair") == 0)
       {
+	  parameter_list |= PAIR;
 	  pstyle = utils::strdup(arg[iarg + 1]);
 	  delta_p = utils::numeric(FLERR, arg[iarg+2], false, lmp);
 	  iarg += 3;
       }
       else if (strcmp(arg[iarg], "charge") == 0)
       {
+	  parameter_list |= CHARGE;
 	  delta_q = utils::numeric(FLERR, arg[iarg+1],false, lmp);
 	  typeC = utils::numeric(FLERR, arg[4], false, lmp);
 	  if (typeC > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeC);  
@@ -101,6 +108,7 @@ ComputeTI::~ComputeTI()
    memory->destroy(epsilon_init);
    delete [] pparam;
    delete [] pstyle;
+   delete [] vector;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -160,22 +168,33 @@ void ComputeTI::init()
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeTI::compute_scaler()
+void ComputeTI::compute_vector()
+{
+   if (parameter_list & PAIR)
+      vector[0] = compute_du<PAIR,mode>(delta_p);
+   if (paramter_list & CHARGE)
+      vector[1] = compute_du<CHARGE,mode>(delta_q);
+}
+
+/* ---------------------------------------------------------------------- */
+
+template <int parameter, int mode>  
+double ComputeTI::compute_du(int &delta)
 {
    double uA, uB, du_dl;
    double lA = -delta;
    double lB = delta;
    allocate_storage();
    backup_restore_qfev<1>();      // backup charge, force, energy, virial array values
-   modify_epsilon_q(lA);      //
+   modify_epsilon_q<parameter,mode>(lA);      //
    update_lmp(); // update the lammps force and virial values
    uA = compute_epair(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
-   modify_epsilon_q(lB);
+   modify_epsilon_q<parameter,mode>(lB);
    uB = compute_epair();
    backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
    deallocate_storage();
    du_dl = (uB-uA)/(lB-lA);
-   scaler = du_dl;
+   return du_dl;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -303,8 +322,8 @@ void ComputeTI::backup_restore_qfev()
 /* --------------------------------------------------------------
 
    -------------------------------------------------------------- */
-template <int parameter>   
-void ComputeTI::modify_epsilon_q(double& scale)
+template <int parameter, int mode>   
+void ComputeTI::modify_epsilon_q(double& delta)
 {
   int nlocal = atom->nlocal;
   int * mask = atom->mask;
@@ -322,21 +341,66 @@ void ComputeTI::modify_epsilon_q(double& scale)
        for (int j = 0; j < ntypes + 1; j++)
        {
 	  if (type[i] == typeA && scale >= 0)
-	      epsilon[i][j] = epsilon_init[i][j] * scale;
-           if (type[i] == typeB && scale <= 1)
-              epsilon[i][j] = epsilon_init[i][j] * (1-scale);
+	      epsilon[i][j] = epsilon_init[i][j] + delta;
+	  if (mode == DUAL)
+              if (type[i] == typeB && scale <= 1)
+                  epsilon[i][j] = epsilon_init[i][j] - delta;
         }
   }
   if (parameter == CHARGE)
   {
       double chargeC;
-      selected_types selected;
       selected.typeA = typeA;
       selected.typeB = typeB;
       selected.typeC = typeC;
       count_atoms(selected);
-      
+      if (selected.countC == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero",typeC);
+      chargeC = (selected.countA * delta + selected.countB * (-delta)) / selected.countC;
+
+      for (int i = 0; i < nlocal; i++)
+      {
+	  if (type[i] == typeA)
+	      q[i] += delta;
+          if (mode == DUAL)
+	      if (type[i] == typeB)
+	          q[i] -= delta;
+	  if (type[i] == typeC)
+	      q[i] = chargeC;
+      }
   }
+}
+
+/* --------------------------------------------------------------------- */
+
+void ComputeTI::count_atoms(selected_type selected)
+{
+    int nlocal = atom->nlocal; 
+    double *q = atom->q;
+    int * type = atom->type;
+	
+    int typeA = selected.typeA;
+    int typeB = selected.typeB;
+    int typeC = selected.typeC;
+    int& countA = selected.countA;
+    int& countB = selected.countB;
+    int& countC = selected.countC;
+
+    int *counts_local = new int[3];
+    int *count = new int[3];
+
+    for (int i = 0; i < nlocal; i++)
+    {
+	if (type[i] == typeA) counts_local[0]++;
+	if (type[i] == typeB) counts_local[1]++;
+	if (type[i] == typeC) counts_local[2]++;
+    }
+
+    MPI_Allreduce(counts_local,counts,3,MPI_INT,MPI_SUM,world);
+
+    countA = counts[0];
+    countB = counts[1];
+    countC = counts[2];
+
 }
 
 /* ----------------------------------------------------------------------
