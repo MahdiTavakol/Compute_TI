@@ -21,6 +21,7 @@ ComputeStyle(thermo_integ,ComputeTI);
 #define COMPUTE_THERMO_INTEG_H
 
 #include "compute.h"
+#include "pair.h"
 
 namespace LAMMPS_NS {
 
