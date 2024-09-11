@@ -115,6 +115,21 @@ ComputeThermoInteg::~ComputeThermoInteg()
 
 /* ---------------------------------------------------------------------- */
 
+void ComputeThermoInteg::setup()
+{
+   epsilon = (double **) ptr1;
+    
+   int ntypes = atom->ntypes;
+   memory->create(epsilon_init,ntypes+1,ntypes+1,"constant_pH:epsilon_init");
+
+   // I am not sure about the limits of these two loops, please double check them
+   for (int i = 0; i < ntypes+1; i++)
+      for (int j = i; j < ntypes+1; j++)
+           epsilon_init[i][j] = epsilon[i][j];
+}
+
+/* ---------------------------------------------------------------------- */
+
 void ComputeThermoInteg::init()
 {
    std::map<std::string, std::string> pair_params;
