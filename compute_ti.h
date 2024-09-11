@@ -74,7 +74,7 @@ class ComputeThermoInteg : public Compute {
 
 
   template <int parameter, int mode>  
-  double compute_du(int &delta);
+  double compute_du(double &delta);
   void allocate_storage();
   void deallocate_storage();
   template  <int direction>
