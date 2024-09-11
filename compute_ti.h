@@ -33,10 +33,11 @@ class ComputeThermoInteg : public Compute {
   void compute_vector() override;
 
  private:
+  int mode;
   // Parameters
   int parameter_list;
 
-  double delta;
+  double delta_p, delta_q;
   double typeA, typeB, typeC;
 
   // Pair style parameters
@@ -51,6 +52,17 @@ class ComputeThermoInteg : public Compute {
                          int countB;
                          int countC;};
   selected_types selected;
+
+  // _org is for value of parameters before the update_lmp() with modified parameters act on them
+  double *q_orig;
+  double **f_orig;
+  double eng_vdwl_orig, eng_coul_orig;
+  double pvirial_orig[6];
+  double *peatom_orig, **pvatom_orig;
+  double energy_orig;
+  double kvirial_orig[6];
+  double *keatom_orig, **kvatom_orig;
+
 
   template <int parameter, int mode>  
   double compute_du(int &delta);
