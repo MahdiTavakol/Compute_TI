@@ -90,7 +90,7 @@ class ComputeThermoInteg : public Compute {
   void count_atoms(selected_types selected);
   void update_lmp();
   void compute_q_total();
-  void compute_epair();
+  double compute_epair();
 };
 
 }    // namespace LAMMPS_NS
