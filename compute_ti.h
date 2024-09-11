@@ -13,21 +13,21 @@
 
 #ifdef COMPUTE_CLASS
 // clang-format off
-ComputeStyle(ti,ComputeTI);
+ComputeStyle(thermo_integ,ComputeTI);
 // clang-format on
 #else
 
-#ifndef COMPUTE_TI_H
-#define COMPUTE_TI_H
+#ifndef COMPUTE_THERMO_INTEG_H
+#define COMPUTE_THERMO_INTEG_H
 
 #include "compute.h"
 
 namespace LAMMPS_NS {
 
-class ComputeTI : public Compute {
+class ComputeThermoInteg : public Compute {
  public:
-  ComputeTI(class LAMMPS *, int, char **);
-  ~ComputeTI() override;
+  ComputeThermoInteg(class LAMMPS *, int, char **);
+  ~ComputeThermoInteg() override;
   void init() override;
   void compute_vector() override;
 
