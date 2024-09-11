@@ -36,23 +36,51 @@ using namespace LAMMPS_NS;
 
 ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
 {
-  if (narg < ??) error->all(FLERR, "Illegal number of arguments in compute ti");
+  if (narg < 8) error->all(FLERR, "Illegal number of arguments in compute ti");
 
   scalar_flag = 1;
   vector_flag = 0;
   size_vector = 0;
   extvector = 0;
 
-  
+  int iarg;  
+  if (strcmp(arg[3], "dual") == 0)
+  {
+      dual = true;
+      typeA = utils::numeric(FLERR, arg[4], false, lmp);
+      if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeA);
+      typeB = utils::numeric(FLERR, arg[5], false, lmp);
+      if (typeB > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeB);
+      iarg = 6;
+  }
+  else if (strcmp(arg[3], "single") == 0)
+  {
+      dual = false;
+      typeA = utils::numeric(FLERR, arg[4], false, lmp);
+      if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeA);
+      iarg = 5;
+  }
+  else error->all(FLERR,"Unknown compute TI style {}",arg[3]);
 
-  pstyle = utils::strdup(arg[3]);
-  delta = utils::numeric(FLERR, arg[4], false, lmp);
-  typeA = utils::numeric(FLERR, arg[5], false, lmp);
-  if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeH);
-  typeB = utils::numeric(FLERR, arg[6], false, lmp);
-  if (typeB > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeB);
-  typeC = utils::numeric(FLERR, arg[6], false, lmp);
-  if (typeC > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeC);
+  
+  while (iarg < narg)
+  {
+      if (strcmp(arg[iarg], "pair") == 0)
+      {
+	  pstyle = utils::strdup(arg[iarg + 1]);
+	  delta_p = utils::numeric(FLERR, arg[iarg+2], false, lmp);
+	  iarg += 3;
+      }
+      else if (strcmp(arg[iarg], "charge") == 0)
+      {
+	  delta_q = utils::numeric(FLERR, arg[iarg+1],false, lmp);
+	  typeC = utils::numeric(FLERR, arg[4], false, lmp);
+	  if (typeC > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeC);  
+	  iarg += 3;
+      }
+      else error->all(FLERR,"Unknown compute TI keyword {}",arg[iarg]);
+  }
+
 
   // allocate space for charge, force, energy, virial arrays
 
@@ -241,7 +269,7 @@ void ComputeTI::backup_restore_qfev()
   forward_reverse_copy<direction>(eng_coul_orig,force->pair->eng_coul);
 
   for (int i = 0; i < 6; i++)
-	  forward_reverse_copy<direction>(pvirial_orig ,force->pair->virial, i);
+     forward_reverse_copy<direction>(pvirial_orig ,force->pair->virial, i);
 
   if (update->eflag_atom) {
     double *peatom = force->pair->eatom;
@@ -275,7 +303,7 @@ void ComputeTI::backup_restore_qfev()
 /* --------------------------------------------------------------
 
    -------------------------------------------------------------- */
-   
+template <int parameter>   
 void ComputeTI::modify_epsilon_q(double& scale)
 {
   int nlocal = atom->nlocal;
@@ -288,14 +316,27 @@ void ComputeTI::modify_epsilon_q(double& scale)
   if (scale > 1) scale = 1;
 
   // not sure about the range of these two loops
-  for (int i = 0; i < ntypes + 1; i++)
-	 for (int j = i; j < ntypes + 1; j++)
-    {
-	    if (type[i] == typeA && scale >= 0)
-	    	epsilon[i][j] = epsilon_init[i][j] * scale;
-       if (type[i] == typeB && scale <= 1)
-         epsilon[i][j] = epsilon_init[i][j] * (1-scale);
-    }
+  if (parameter == PAIR)
+  {
+     for (int i = 0; i < ntypes + 1; i++)
+       for (int j = 0; j < ntypes + 1; j++)
+       {
+	  if (type[i] == typeA && scale >= 0)
+	      epsilon[i][j] = epsilon_init[i][j] * scale;
+           if (type[i] == typeB && scale <= 1)
+              epsilon[i][j] = epsilon_init[i][j] * (1-scale);
+        }
+  }
+  if (parameter == CHARGE)
+  {
+      double chargeC;
+      selected_types selected;
+      selected.typeA = typeA;
+      selected.typeB = typeB;
+      selected.typeC = typeC;
+      count_atoms(selected);
+      
+  }
 }
 
 /* ----------------------------------------------------------------------
@@ -335,7 +376,7 @@ void ComputeTI::compute_q_total()
     MPI_Allreduce(&q_local,&q_total,1,MPI_DOUBLE,MPI_SUM,world);
 
     if ((q_total >= tolerance || q_total <= -tolerance) && comm->me == 0)
-    	error->warning(FLERR,"q_total in fix constant-pH is non-zero: {}",q_total);
+    	error->warning(FLERR,"q_total in compute TI is non-zero: {}",q_total);
 }
 
 /* --------------------------------------------------------------------- */
