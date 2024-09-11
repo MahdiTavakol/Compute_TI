@@ -50,9 +50,9 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
   typeA = utils::numeric(FLERR, arg[5], false, lmp);
   if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeH);
   typeB = utils::numeric(FLERR, arg[6], false, lmp);
+  if (typeB > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeB);
   typeC = utils::numeric(FLERR, arg[6], false, lmp);
-
-
+  if (typeC > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeC);
 
   // allocate space for charge, force, energy, virial arrays
 
@@ -61,9 +61,18 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
   peatom_orig = keatom_orig = nullptr;
   pvatom_orig = kvatom_orig = nullptr;
 
-  allocate_storage();
-
   fixgpu = nullptr;
+
+  allocate_storage();
+}
+
+/* ---------------------------------------------------------------------- */
+ComputeTI::~ComputeTI()
+{
+   deallocate_storage();
+   memory->destroy(epsilon_init);
+   delete [] pparam;
+   delete [] pstyle;
 }
 
 /* ---------------------------------------------------------------------- */
