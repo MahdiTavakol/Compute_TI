@@ -406,7 +406,7 @@ void ComputeThermoInteg::count_atoms(selected_type selected)
     int& countC = selected.countC;
 
     int *counts_local = new int[3];
-    int *count = new int[3];
+    int *counts = new int[3];
 
     for (int i = 0; i < nlocal; i++)
     {
