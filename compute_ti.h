@@ -41,7 +41,13 @@ class ComputeTI : public Compute {
   Pair * pair;
   int pdim1;
 
-  
+  struct selected_types {int typeA;
+	                      int typeB; 
+	                      int typeC;
+                         int countA;
+                         int countB;
+                         int countC;};
+  selected_types selected;
 
   void compute_us();
   void allocate_storage();
