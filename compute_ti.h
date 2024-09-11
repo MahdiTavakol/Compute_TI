@@ -37,8 +37,8 @@ class ComputeTI : public Compute {
   double typeA, typeB, typeC;
 
   // Pair style parameters
-  char * pstyle, * pparam1;
-  Pair * pair1;
+  char * pstyle, * pparam;
+  Pair * pair;
   int pdim1;
 
   
