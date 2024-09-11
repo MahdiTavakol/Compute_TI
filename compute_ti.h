@@ -29,14 +29,19 @@ class ComputeTI : public Compute {
   ComputeTI(class LAMMPS *, int, char **);
   ~ComputeTI() override;
   void init() override;
-  void compute_vector() override;
+  void compute_scaler() override;
 
  private:
+  // Parameters
+  double delta;
+  double typeA, typeB, typeC;
 
   // Pair style parameters
   char * pstyle, * pparam1;
   Pair * pair1;
   int pdim1;
+
+  
 
   void compute_us();
   void allocate_storage();
