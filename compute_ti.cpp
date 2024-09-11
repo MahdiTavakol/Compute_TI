@@ -48,6 +48,8 @@ ComputeTI::ComputeTI(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg
 
   vector = new double[2];
 
+  parameter_list = 0;
+
   int iarg;  
   if (strcmp(arg[3], "dual") == 0)
   {
