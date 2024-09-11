@@ -198,7 +198,7 @@ void ComputeThermoInteg::compute_vector()
 /* ---------------------------------------------------------------------- */
 
 template <int parameter, int mode>  
-double ComputeThermoInteg::compute_du(int &delta)
+double ComputeThermoInteg::compute_du(double &delta)
 {
    double uA, uB, du_dl;
    double lA = -delta;
@@ -350,19 +350,20 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
   int ntypes = atom->ntypes;
   double * q = atom->q;
 
-  if (scale < 0) scale = 0;
-  if (scale > 1) scale = 1;
+
 
   // not sure about the range of these two loops
   if (parameter == PAIR)
   {
+     if (delta < 0) delta = 0;
+     if (delta > 1) delta = 1;
      for (int i = 0; i < ntypes + 1; i++)
        for (int j = 0; j < ntypes + 1; j++)
        {
-	  if (type[i] == typeA && scale >= 0)
+	  if (type[i] == typeA)
 	      epsilon[i][j] = epsilon_init[i][j] + delta;
 	  if (mode == DUAL)
-              if (type[i] == typeB && scale <= 1)
+              if (type[i] == typeB)
                   epsilon[i][j] = epsilon_init[i][j] - delta;
         }
   }
