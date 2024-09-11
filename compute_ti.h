@@ -33,6 +33,8 @@ class ComputeTI : public Compute {
 
  private:
   // Parameters
+  int parameter_list;
+
   double delta;
   double typeA, typeB, typeC;
 
@@ -42,14 +44,15 @@ class ComputeTI : public Compute {
   int pdim1;
 
   struct selected_types {int typeA;
-	                      int typeB; 
-	                      int typeC;
+	                 int typeB; 
+	                 int typeC;
                          int countA;
                          int countB;
                          int countC;};
   selected_types selected;
 
-  void compute_us();
+  template <int parameter, int mode>  
+  double compute_du(int &delta);
   void allocate_storage();
   void deallocate_storage();
   template  <int direction>
@@ -60,7 +63,9 @@ class ComputeTI : public Compute {
   void forward_reverse_copy(double** ,double** , int , int );
   template <int direction>
   void backup_restore_qfev();
-  void modify_epsilon_q();
+  template <int parameter, int mode>   
+  void modify_epsilon_q(double& delta);
+  void count_atoms(selected_type selected);
   void update_lmp();
   void compute_q_total();
   void compute_epair();
