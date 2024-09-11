@@ -392,7 +392,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
 
 /* --------------------------------------------------------------------- */
 
-void ComputeThermoInteg::count_atoms(selected_type selected)
+void ComputeThermoInteg::count_atoms(selected_types selected)
 {
     int nlocal = atom->nlocal; 
     double *q = atom->q;
