@@ -176,7 +176,7 @@ void ComputeThermoInteg::compute_vector()
    vector[1] = 0.0;
    if (parameter_list & PAIR)
       vector[0] = compute_du<PAIR,mode>(delta_p);
-   if (paramter_list & CHARGE)
+   if (parameter_list & CHARGE)
       vector[1] = compute_du<CHARGE,mode>(delta_q);
 }
 
