@@ -30,6 +30,7 @@ class ComputeThermoInteg : public Compute {
   ComputeThermoInteg(class LAMMPS *, int, char **);
   ~ComputeThermoInteg() override;
   void init() override;
+  void setup() override;
   void compute_vector() override;
 
  private:
@@ -52,6 +53,14 @@ class ComputeThermoInteg : public Compute {
                          int countB;
                          int countC;};
   selected_types selected;
+
+  class Fix *fixgpu;
+
+  // This is just a pointer to the non-bonded interaction parameters and does not have any allocated memory
+  // This should not be deallocated since the original pointer will be deallocated later on by the LAMMPS
+  double **epsilon;
+  // _init is the initial value of hydrogen atoms properties which is multiplied by lambda at each step
+  double **epsilon_init;
 
   // _org is for value of parameters before the update_lmp() with modified parameters act on them
   double *q_orig;
