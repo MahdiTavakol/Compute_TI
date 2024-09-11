@@ -172,6 +172,8 @@ void ComputeTI::init()
 
 void ComputeTI::compute_vector()
 {
+   vector[0] = 0.0;
+   vector[1] = 0.0;
    if (parameter_list & PAIR)
       vector[0] = compute_du<PAIR,mode>(delta_p);
    if (paramter_list & CHARGE)
