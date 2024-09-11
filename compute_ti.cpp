@@ -125,8 +125,8 @@ void ComputeTI::init()
    if (pair_params.find(pstyle) == pair_params.end())
       error->all(FLERR,"The pair style {} is not currently supported in fix constant_pH",pstyle);
    
-   pparam1 = new char[pair_params[pstyle].length()+1];
-   std::strcpy(pparam1,pair_params[pstyle].c_str());
+   pparam = new char[pair_params[pstyle].length()+1];
+   std::strcpy(pparam,pair_params[pstyle].c_str());
    
 }
 
