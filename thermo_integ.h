@@ -72,6 +72,8 @@ class ComputeThermoInteg : public Compute {
   double kvirial_orig[6];
   double *keatom_orig, **kvatom_orig;
 
+  int nmax;
+
 
   template <int parameter, int mode>  
   double compute_du(double &delta);
