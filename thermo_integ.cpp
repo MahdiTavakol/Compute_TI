@@ -142,7 +142,7 @@ void ComputeThermoInteg::setup()
 
         // I am not sure about the limits of these two loops, please double check them
         for (int i = 0; i < ntypes + 1; i++)
-            for (int j = i; j < ntypes + 1; j++)
+            for (int j = 0; j < ntypes + 1; j++)
                 epsilon_init[i][j] = epsilon[i][j];
     }
 }
@@ -428,7 +428,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
                 }
             }
         }
-        if (modified_delta) error->warning("The delta value in compute_TI has been modified to {}", delta);
+        if (modified_delta) error->warning(FLERR,"The delta value in compute_TI has been modified to {}", delta);
 
 
 
