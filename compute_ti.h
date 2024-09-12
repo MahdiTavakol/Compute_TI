@@ -44,7 +44,7 @@ class ComputeThermoInteg : public Compute {
   // Pair style parameters
   char * pstyle, * pparam;
   Pair * pair;
-  int pdim1;
+  int pdim;
 
   struct selected_types {int typeA;
 	                 int typeB; 
