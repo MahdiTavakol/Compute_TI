@@ -142,7 +142,7 @@ void ComputeThermoInteg::setup()
 
         // I am not sure about the limits of these two loops, please double check them
         for (int i = 0; i < ntypes + 1; i++)
-            for (int j = 0; j < ntypes + 1; j++)
+            for (int j = i; j < ntypes + 1; j++)
                 epsilon_init[i][j] = epsilon[i][j];
     }
 }
@@ -395,40 +395,46 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
     // taking care of cases for which epsilon or lambda become negative
     if (parameter == PAIR)
     {
+        int bad_i, bad_j;
         bool modified_delta = false;
         if (delta < 0)
         {
-            for (int i = 1; i < ntypes + 1; i++)
-            {
+            for (int i = typeA; i < ntypes + 1; i++)
                 if (epsilon_init[typeA][i] < -delta)
                 {
+                    bad_j = i;
                     modified_delta = true;
                     delta = -epsilon_init[typeA][i];
                 }
+            for (int i = 1; i < typeA; i++)
                 if (epsilon_init[i][typeA] < -delta)
                 {
+                    bad_i = i;
                     modified_delta = true;
                     delta = -epsilon_init[i][typeA];
                 }
-            }
         }
         if (delta > 0 && mode == DUAL)
         {
-            for (int i = 1; i < ntypes + 1; i++)
-            {
+            for (int i = typeB; i < ntypes + 1; i++)
                 if (epsilon_init[typeB][i] < delta)
                 {
+                    bad_j = i;
                     modified_delta = true;
                     delta = epsilon_init[typeA][i];
                 }
+            for (int i = 1; i < typeB; i++)
                 if (epsilon_init[i][typeB] < delta)
                 {
+                    bad_i = i;
                     modified_delta = true;
                     delta = epsilon_init[i][typeA];
                 }
-            }
         }
-        if (modified_delta) error->warning(FLERR,"The delta value in compute_TI has been modified to {}", delta);
+        if (modified_delta) 
+        {
+           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta,bad_i,bad_j);
+        }
 
 
 
