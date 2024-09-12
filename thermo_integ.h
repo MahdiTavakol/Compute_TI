@@ -39,7 +39,7 @@ class ComputeThermoInteg : public Compute {
   int parameter_list;
 
   double delta_p, delta_q;
-  double typeA, typeB, typeC;
+  int typeA, typeB, typeC;
 
   // Pair style parameters
   char * pstyle, * pparam;
