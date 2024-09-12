@@ -103,6 +103,8 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
 
     fixgpu = nullptr;
 
+    nmax = atom->nmax;
+
     allocate_storage();
 }
 
@@ -235,6 +237,13 @@ double ComputeThermoInteg::compute_du(double& delta)
     double uA, uB, du_dl;
     double lA = -delta;
     double lB = delta;
+    /* check if there is enough allocated memory */
+    if (nmax < atom->nmax)
+    {
+        nmax = atom->nmax;
+        deallocate_storage();
+        allocate_storage();
+    }
     backup_restore_qfev<1>();      // backup charge, force, energy, virial array values
     modify_epsilon_q<parameter, mode>(lA);      //
     update_lmp(); // update the lammps force and virial values
@@ -258,7 +267,6 @@ void ComputeThermoInteg::allocate_storage()
        nmax contains the maximum number of nlocal
        and nghost atoms.
     */
-    int nmax = atom->nmax;
     memory->create(f_orig, nmax, 3, "compute_TI:f_orig");
     memory->create(q_orig, nmax, "compute_TI:q_orig");
     memory->create(peatom_orig, nmax, "compute_TI:peatom_orig");
