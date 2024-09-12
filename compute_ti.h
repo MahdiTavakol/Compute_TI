@@ -13,7 +13,7 @@
 
 #ifdef COMPUTE_CLASS
 // clang-format off
-ComputeStyle(thermo_integ,ComputeTI);
+ComputeStyle(thermo_integ,ComputeThermoInteg);
 // clang-format on
 #else
 
