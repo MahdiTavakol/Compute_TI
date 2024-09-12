@@ -118,26 +118,29 @@ ComputeThermoInteg::~ComputeThermoInteg()
 
 void ComputeThermoInteg::setup()
 {
-   pair = nullptr;
-   if (lmp->suffix_enable)
-       pair = force->pair_match(std::string(pstyle)+"/"+lmp->suffix,1);
-   if (pair == nullptr)
-       pair = force->pair_match(pstyle,1); // I need to define the pstyle variable
-   void *ptr1 = pair->extract(pparam,pdim);
-   if (ptr1 == nullptr)
-       error->all(FLERR,"Compute TI pair style {} was not found",pstyle);
-   if (pdim != 2)
-       error->all(FLERR,"Pair style parameter {} is not compatible with compute TI", pparam);
+   if (mode & PAIR)
+   {
+       pair = nullptr;
+       if (lmp->suffix_enable)
+           pair = force->pair_match(std::string(pstyle)+"/"+lmp->suffix,1);
+       if (pair == nullptr)
+           pair = force->pair_match(pstyle,1); // I need to define the pstyle variable
+       void *ptr1 = pair->extract(pparam,pdim);
+       if (ptr1 == nullptr)
+           error->all(FLERR,"Compute TI pair style {} was not found",pstyle);
+       if (pdim != 2)
+           error->all(FLERR,"Pair style parameter {} is not compatible with compute TI", pparam);
 	
-   epsilon = (double **) ptr1;
+       epsilon = (double **) ptr1;
     
-   int ntypes = atom->ntypes;
-   memory->create(epsilon_init,ntypes+1,ntypes+1,"compute_TI:epsilon_init");
+       int ntypes = atom->ntypes;
+       memory->create(epsilon_init,ntypes+1,ntypes+1,"compute_TI:epsilon_init");
 
-   // I am not sure about the limits of these two loops, please double check them
-   for (int i = 0; i < ntypes+1; i++)
-      for (int j = i; j < ntypes+1; j++)
-           epsilon_init[i][j] = epsilon[i][j];
+       // I am not sure about the limits of these two loops, please double check them
+       for (int i = 0; i < ntypes+1; i++)
+           for (int j = i; j < ntypes+1; j++)
+               epsilon_init[i][j] = epsilon[i][j];
+   }
 }
 
 /* ---------------------------------------------------------------------- */
