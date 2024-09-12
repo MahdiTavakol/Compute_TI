@@ -43,7 +43,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS *lmp, int narg, char **arg) : Comp
 
   scalar_flag = 0;
   vector_flag = 1;
-  size_vector = 0;
+  size_vector = 2;
   extvector = 0;
 
   vector = new double[2];
