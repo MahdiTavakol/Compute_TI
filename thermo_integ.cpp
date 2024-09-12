@@ -398,7 +398,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
         bool modified_delta = false;
         if (delta < 0)
         {
-            for (int i = 0; i < ntypes + 1; i++)
+            for (int i = 1; i < ntypes + 1; i++)
             {
                 if (epsilon_init[typeA][i] < -delta)
                 {
@@ -414,7 +414,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
         }
         if (delta > 0 && mode == DUAL)
         {
-            for (int i = 0; i < ntypes + 1; i++)
+            for (int i = 1; i < ntypes + 1; i++)
             {
                 if (epsilon_init[typeB][i] < delta)
                 {
