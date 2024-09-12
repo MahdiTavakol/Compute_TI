@@ -28,6 +28,7 @@
 #include "timer.h"
 #include "update.h"
 #include "variable.h"
+/* A compute style to do thermodynamic integration written by Mahdi Tavakol (Oxford) mahditavakol90@gmail.com */
 
 using namespace LAMMPS_NS;
 
