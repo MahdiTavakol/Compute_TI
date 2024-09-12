@@ -392,18 +392,55 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
 
 
 
-    // not sure about the range of these two loops
+    // taking care of cases for which epsilon or lambda become negative
     if (parameter == PAIR)
     {
-        if (delta < 0) delta = 0;
-        if (delta > 1) delta = 1;
+        bool modified_delta = false;
+        if (delta < 0)
+        {
+            for (int i = 0; i < ntypes + 1; i++)
+            {
+                if (epsilon_init[typeA][i] < -delta)
+                {
+                    modified_delta = true;
+                    delta = -epsilon_init[typeA][i];
+                }
+                if (epsilon_init[i][typeA] < -delta)
+                {
+                    modified_delta = true;
+                    delta = -epsilon_init[i][typeA];
+                }
+            }
+        }
+        if (delta > 0 && mode == DUAL)
+        {
+            for (int i = 0; i < ntypes + 1; i++)
+            {
+                if (epsilon_init[typeB][i] < delta)
+                {
+                    modified_delta = true;
+                    delta = epsilon_init[typeA][i];
+                }
+                if (epsilon_init[i][typeB] < delta)
+                {
+                    modified_delta = true;
+                    delta = epsilon_init[i][typeA];
+                }
+            }
+        }
+        if (modified_delta) error->warning("The delta value in compute_TI has been modified to {}", delta);
+
+
+
         for (int i = 0; i < ntypes + 1; i++)
             for (int j = 0; j < ntypes + 1; j++)
             {
-                if (type[i] == typeA)
+                if (i == typeA || j == typeA)
+                {
                     epsilon[i][j] = epsilon_init[i][j] + delta;
+                }
                 if (mode == DUAL)
-                    if (type[i] == typeB)
+                    if (i == typeB || j == typeB)
                         epsilon[i][j] = epsilon_init[i][j] - delta;
             }
     }
