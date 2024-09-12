@@ -444,7 +444,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
 
 
         for (int i = 0; i < ntypes + 1; i++)
-            for (int j = 0; j < ntypes + 1; j++)
+            for (int j = i; j < ntypes + 1; j++)
             {
                 if (i == typeA || j == typeA)
                 {
@@ -454,6 +454,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
                     if (i == typeB || j == typeB)
                         epsilon[i][j] = epsilon_init[i][j] - delta;
             }
+        pair->reinit();
     }
     if (parameter == CHARGE)
     {
