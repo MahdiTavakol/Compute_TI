@@ -235,7 +235,6 @@ double ComputeThermoInteg::compute_du(double& delta)
     double uA, uB, du_dl;
     double lA = -delta;
     double lB = delta;
-    allocate_storage();
     backup_restore_qfev<1>();      // backup charge, force, energy, virial array values
     modify_epsilon_q<parameter, mode>(lA);      //
     update_lmp(); // update the lammps force and virial values
@@ -245,7 +244,6 @@ double ComputeThermoInteg::compute_du(double& delta)
     uB = compute_epair();
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     update_lmp(); // update the lammps force and virial values
-    deallocate_storage();
     du_dl = (uB - uA) / (lB - lA);
     return du_dl;
 }
