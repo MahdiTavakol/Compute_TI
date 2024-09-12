@@ -395,13 +395,15 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
     // taking care of cases for which epsilon or lambda become negative
     if (parameter == PAIR)
     {
-        int bad_i, bad_j;
+        int bad_i = 0;
+        int bad_j = 0;
         bool modified_delta = false;
         if (delta < 0)
         {
             for (int i = typeA; i < ntypes + 1; i++)
                 if (epsilon_init[typeA][i] < -delta)
                 {
+                    if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
                     delta = -epsilon_init[typeA][i];
@@ -409,6 +411,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
             for (int i = 1; i < typeA; i++)
                 if (epsilon_init[i][typeA] < -delta)
                 {
+                    if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
                     delta = -epsilon_init[i][typeA];
@@ -419,6 +422,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
             for (int i = typeB; i < ntypes + 1; i++)
                 if (epsilon_init[typeB][i] < delta)
                 {
+                    if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
                     delta = epsilon_init[typeA][i];
@@ -426,6 +430,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
             for (int i = 1; i < typeB; i++)
                 if (epsilon_init[i][typeB] < delta)
                 {
+                    if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
                     delta = epsilon_init[i][typeA];
