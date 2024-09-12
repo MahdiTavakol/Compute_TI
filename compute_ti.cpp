@@ -31,7 +31,7 @@
 
 using namespace LAMMPS_NS;
 
-enum {SINGLE,DUAL};
+enum {SINGLE = 1 << 0 ,DUAL = 1 << 1};
 enum {PAIR = 1 << 0,
       CHARGE = 1 << 1};
 
@@ -49,11 +49,12 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS *lmp, int narg, char **arg) : Comp
   vector = new double[2];
 
   parameter_list = 0;
+  mode = 0;
 
   int iarg;  
   if (strcmp(arg[3], "dual") == 0)
   {
-      mode = DUAL;
+      mode |= DUAL;
       typeA = utils::numeric(FLERR, arg[4], false, lmp);
       if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeA);
       typeB = utils::numeric(FLERR, arg[5], false, lmp);
@@ -62,7 +63,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS *lmp, int narg, char **arg) : Comp
   }
   else if (strcmp(arg[3], "single") == 0)
   {
-      mode = SINGLE;
+      mode |= SINGLE;
       typeA = utils::numeric(FLERR, arg[4], false, lmp);
       if (typeA > atom->ntypes) error->all(FLERR,"Illegal compute TI atom type {}",typeA);
       iarg = 5;
@@ -117,10 +118,21 @@ ComputeThermoInteg::~ComputeThermoInteg()
 
 void ComputeThermoInteg::setup()
 {
+   pair = nullptr;
+   if (lmp->suffix_enable)
+       pair = force->pair_match(std::string(pstyle)+"/"+lmp->suffix,1);
+   if (pair == nullptr)
+       pair = force->pair_match(pstyle,1); // I need to define the pstyle variable
+   void *ptr1 = pair->extract(pparam,pdim);
+   if (ptr1 == nullptr)
+       error->all(FLERR,"Compute TI pair style {} was not found",pstyle);
+   if (pdim != 2)
+       error->all(FLERR,"Pair style parameter {} is not compatible with compute TI", pparam);
+	
    epsilon = (double **) ptr1;
     
    int ntypes = atom->ntypes;
-   memory->create(epsilon_init,ntypes+1,ntypes+1,"constant_pH:epsilon_init");
+   memory->create(epsilon_init,ntypes+1,ntypes+1,"compute_TI:epsilon_init");
 
    // I am not sure about the limits of these two loops, please double check them
    for (int i = 0; i < ntypes+1; i++)
@@ -190,9 +202,20 @@ void ComputeThermoInteg::compute_vector()
    vector[0] = 0.0;
    vector[1] = 0.0;
    if (parameter_list & PAIR)
-      vector[0] = compute_du<PAIR,mode>(delta_p);
+   {
+      /* It should be compute_du<PAIR,mode>(delta_p); But that does not work for some reasons!*/
+      if (mode & SINGLE)
+         vector[0] = compute_du<PAIR,SINGLE>(delta_p);
+      if (mode & DUAL)
+         vector[0] = compute_du<PAIR,DUAL>(delta_p);
+   }
    if (parameter_list & CHARGE)
-      vector[1] = compute_du<CHARGE,mode>(delta_q);
+   {
+      if (mode & SINGLE)
+         vector[1] = compute_du<CHARGE,SINGLE>(delta_q);
+      if (mode & DUAL)
+         vector[1] = compute_du<CHARGE,DUAL>(delta_q);
+   }
 }
 
 /* ---------------------------------------------------------------------- */
