@@ -488,7 +488,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         if (selected.countA == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
         if (selected.countB == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
         if (selected.countC == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
-        chargeC = (selected.countA * delta + selected.countB * (-delta)) / selected.countC;
+        chargeC = (selected.countA * delta_q + selected.countB * (-delta_q)) / selected.countC;
 
         for (int i = 0; i < nlocal; i++)
         {
