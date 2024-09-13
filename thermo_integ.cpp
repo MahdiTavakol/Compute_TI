@@ -43,7 +43,7 @@ enum {
 
 ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Compute(lmp, narg, arg)
 {
-    if (narg < 8) error->all(FLERR, "Illegal number of arguments in compute ti");
+    if (narg < 10) error->all(FLERR, "Illegal number of arguments in compute ti");
 
     scalar_flag = 0;
     vector_flag = 1;
@@ -55,24 +55,27 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     parameter_list = 0;
     mode = 0;
 
+    lambda = utils::numeric(FLERR,arg[3],false,lmp);
+    dlambda = utils::numeric(FLERR,arg[4],false,lmp);
+
     int iarg;
-    if (strcmp(arg[3], "dual") == 0)
+    if (strcmp(arg[5], "dual") == 0)
     {
         mode |= DUAL;
-        typeA = utils::numeric(FLERR, arg[4], false, lmp);
+        typeA = utils::numeric(FLERR, arg[6], false, lmp);
         if (typeA > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeA);
-        typeB = utils::numeric(FLERR, arg[5], false, lmp);
+        typeB = utils::numeric(FLERR, arg[7], false, lmp);
         if (typeB > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeB);
-        iarg = 6;
+        iarg = 8;
     }
-    else if (strcmp(arg[3], "single") == 0)
+    else if (strcmp(arg[5], "single") == 0)
     {
         mode |= SINGLE;
-        typeA = utils::numeric(FLERR, arg[4], false, lmp);
+        typeA = utils::numeric(FLERR, arg[6], false, lmp);
         if (typeA > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeA);
-        iarg = 5;
+        iarg = 7;
     }
-    else error->all(FLERR, "Unknown compute TI style {}", arg[3]);
+    else error->all(FLERR, "Unknown compute TI style {}", arg[5]);
 
 
     while (iarg < narg)
@@ -94,6 +97,8 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
         }
         else error->all(FLERR, "Unknown compute TI keyword {}", arg[iarg]);
     }
+
+    if ((parameter_list & PAIR) && (parameter_list & CHARGE)) parameter_list |= BOTH;
 
 
     // allocate space for charge, force, energy, virial arrays
@@ -163,7 +168,7 @@ void ComputeThermoInteg::init()
         pair_params["lj/cut/coul/cut/soft/omp"] = "lambda";
         pair_params["lj/cut/coul/long/soft"] = "lambda";
         pair_params["lj/cut/coul/long/soft/gpu"] = "lambda";
-        pair_params["lj/cut/coul/long/soft/omp"] = "lambda";
+        pair_params["lj/cut/coul/long/soft/omp"] = "lambdanulldoublenulldoublenulldouble";
         pair_params["lj/cut/tip4p/long/soft"] = "lambda";
         pair_params["lj/cut/tip4p/long/soft/omp"] = "lambda";
         pair_params["lj/charmm/coul/long/soft"] = "lambda";
@@ -216,27 +221,27 @@ void ComputeThermoInteg::compute_vector()
     vector[1] = 0.0;
     vector[2] = 0.0;
 
-    int nullint;
+    double nulldouble;
    
     if (parameter_list & PAIR)
     {
         /* It should be compute_du<PAIR,mode>(delta_p); But that does not work for some reasons!*/
         if (mode & SINGLE)
-            vector[0] = compute_du<PAIR, SINGLE>(delta_p,nullint);
+            vector[0] = compute_du<PAIR, SINGLE>(delta_p,nulldouble);
         if (mode & DUAL)
-            vector[0] = compute_du<PAIR, DUAL>(delta_p,nullint);
+            vector[0] = compute_du<PAIR, DUAL>(delta_p,nulldouble);
     }
     if (parameter_list & CHARGE)
     {
         if (mode & SINGLE)
-            vector[1] = compute_du<CHARGE, SINGLE>(nullint,delta_q);
+            vector[1] = compute_du<CHARGE, SINGLE>(nulldouble,delta_q);
         if (mode & DUAL)
-            vector[1] = compute_du<CHARGE, DUAL>(nullint,delta_q);
+            vector[1] = compute_du<CHARGE, DUAL>(nulldouble,delta_q);
     }
     if (parameter_list & BOTH)
     {
         if (mode & SINGLE)
-            vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q)
+            vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q);
         if (mode & DUAL)
             vector[2] = compute_du<BOTH,DUAL>(delta_p,delta_q);
     }
@@ -268,7 +273,7 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
     uB = compute_epair();
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     update_lmp(); // update the lammps force and virial values
-    du_dl = (uB - uA) / (lB - lA);
+    du_dl = (uB - uA) / dlambda;
     return du_dl;
 }
 
