@@ -35,7 +35,8 @@ using namespace LAMMPS_NS;
 enum { SINGLE = 1 << 0, DUAL = 1 << 1 };
 enum {
     PAIR = 1 << 0,
-    CHARGE = 1 << 1
+    CHARGE = 1 << 1,
+    BOTH = 1 << 2
 };
 
 /* ---------------------------------------------------------------------- */
@@ -46,10 +47,10 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
 
     scalar_flag = 0;
     vector_flag = 1;
-    size_vector = 2;
+    size_vector = 3;
     extvector = 0;
 
-    vector = new double[2];
+    vector = new double[3];
 
     parameter_list = 0;
     mode = 0;
@@ -213,31 +214,42 @@ void ComputeThermoInteg::compute_vector()
 {
     vector[0] = 0.0;
     vector[1] = 0.0;
+    vector[2] = 0.0;
+   
     if (parameter_list & PAIR)
     {
         /* It should be compute_du<PAIR,mode>(delta_p); But that does not work for some reasons!*/
         if (mode & SINGLE)
-            vector[0] = compute_du<PAIR, SINGLE>(delta_p);
+            vector[0] = compute_du<PAIR, SINGLE>(delta_p,0.0);
         if (mode & DUAL)
-            vector[0] = compute_du<PAIR, DUAL>(delta_p);
+            vector[0] = compute_du<PAIR, DUAL>(delta_p,0.0);
     }
     if (parameter_list & CHARGE)
     {
         if (mode & SINGLE)
-            vector[1] = compute_du<CHARGE, SINGLE>(delta_q);
+            vector[1] = compute_du<CHARGE, SINGLE>(0.0,delta_q);
         if (mode & DUAL)
-            vector[1] = compute_du<CHARGE, DUAL>(delta_q);
+            vector[1] = compute_du<CHARGE, DUAL>(0.0,delta_q);
+    }
+    if (parameter_list & BOTH)
+    {
+        if (mode & SINGLE)
+            vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q)
+        if (mode & DUAL)
+            vector[2] = compute_du<BOTH,DUAL>(delta_p,delta_q);
     }
 }
 
 /* ---------------------------------------------------------------------- */
 
 template <int parameter, int mode>
-double ComputeThermoInteg::compute_du(double& delta)
+double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
 {
     double uA, uB, du_dl;
-    double lA = -delta;
-    double lB = delta;
+    double lA_p = -delta_p;
+    double lA_q = -delta_q;
+    double lB_p = delta_p;
+    double lB_q = delta_q;
     /* check if there is enough allocated memory */
     if (nmax < atom->nmax)
     {
@@ -246,10 +258,10 @@ double ComputeThermoInteg::compute_du(double& delta)
         allocate_storage();
     }
     backup_restore_qfev<1>();      // backup charge, force, energy, virial array values
-    modify_epsilon_q<parameter, mode>(lA);      //
+    modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
     uA = compute_epair(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
-    modify_epsilon_q<parameter, mode>(lB);
+    modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
     uB = compute_epair();
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
@@ -383,7 +395,7 @@ void ComputeThermoInteg::backup_restore_qfev()
 
    -------------------------------------------------------------- */
 template <int parameter, int mode>
-void ComputeThermoInteg::modify_epsilon_q(double& delta)
+void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 {
     int nlocal = atom->nlocal;
     int* mask = atom->mask;
@@ -394,7 +406,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
 
 
     // taking care of cases for which epsilon or lambda become negative
-    if (parameter == PAIR)
+    if (parameter & PAIR)
     {
         int bad_i = 0;
         int bad_j = 0;
@@ -402,44 +414,44 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
         if (delta < 0)
         {
             for (int i = typeA; i < ntypes + 1; i++)
-                if (epsilon_init[typeA][i] < -delta)
+                if (epsilon_init[typeA][i] < -delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
-                    delta = -epsilon_init[typeA][i];
+                    delta_p = -epsilon_init[typeA][i];
                 }
             for (int i = 1; i < typeA; i++)
-                if (epsilon_init[i][typeA] < -delta)
+                if (epsilon_init[i][typeA] < -delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
-                    delta = -epsilon_init[i][typeA];
+                    delta_p = -epsilon_init[i][typeA];
                 }
         }
         if (delta > 0 && mode == DUAL)
         {
             for (int i = typeB; i < ntypes + 1; i++)
-                if (epsilon_init[typeB][i] < delta)
+                if (epsilon_init[typeB][i] < delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
-                    delta = epsilon_init[typeA][i];
+                    delta_p = epsilon_init[typeA][i];
                 }
             for (int i = 1; i < typeB; i++)
-                if (epsilon_init[i][typeB] < delta)
+                if (epsilon_init[i][typeB] < delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
-                    delta = epsilon_init[i][typeA];
+                    delta_p = epsilon_init[i][typeA];
                 }
         }
         if (modified_delta) 
         {
-           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta,bad_i,bad_j);
+           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p,bad_i,bad_j);
         }
 
 
@@ -449,15 +461,15 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
             {
                 if (i == typeA || j == typeA)
                 {
-                    epsilon[i][j] = epsilon_init[i][j] + delta;
+                    epsilon[i][j] = epsilon_init[i][j] + delta_p;
                 }
                 if (mode == DUAL)
                     if (i == typeB || j == typeB)
-                        epsilon[i][j] = epsilon_init[i][j] - delta;
+                        epsilon[i][j] = epsilon_init[i][j] - delta_p;
             }
         pair->reinit();
     }
-    if (parameter == CHARGE)
+    if (parameter & CHARGE )
     {
         double chargeC;
         selected.typeA = typeA;
@@ -474,10 +486,10 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta)
         for (int i = 0; i < nlocal; i++)
         {
             if (type[i] == typeA)
-                q[i] += delta;
+                q[i] += delta_q;
             if (mode == DUAL)
                 if (type[i] == typeB)
-                    q[i] -= delta;
+                    q[i] -= delta_q;
             if (type[i] == typeC)
                 q[i] = chargeC;
         }
