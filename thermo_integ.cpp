@@ -215,21 +215,23 @@ void ComputeThermoInteg::compute_vector()
     vector[0] = 0.0;
     vector[1] = 0.0;
     vector[2] = 0.0;
+
+    int nullint;
    
     if (parameter_list & PAIR)
     {
         /* It should be compute_du<PAIR,mode>(delta_p); But that does not work for some reasons!*/
         if (mode & SINGLE)
-            vector[0] = compute_du<PAIR, SINGLE>(delta_p,0.0);
+            vector[0] = compute_du<PAIR, SINGLE>(delta_p,nullint);
         if (mode & DUAL)
-            vector[0] = compute_du<PAIR, DUAL>(delta_p,0.0);
+            vector[0] = compute_du<PAIR, DUAL>(delta_p,nullint);
     }
     if (parameter_list & CHARGE)
     {
         if (mode & SINGLE)
-            vector[1] = compute_du<CHARGE, SINGLE>(0.0,delta_q);
+            vector[1] = compute_du<CHARGE, SINGLE>(nullint,delta_q);
         if (mode & DUAL)
-            vector[1] = compute_du<CHARGE, DUAL>(0.0,delta_q);
+            vector[1] = compute_du<CHARGE, DUAL>(nullint,delta_q);
     }
     if (parameter_list & BOTH)
     {
