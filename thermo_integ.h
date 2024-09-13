@@ -38,6 +38,8 @@ class ComputeThermoInteg : public Compute {
   // Parameters
   int parameter_list;
 
+  double lambda, dlambda;
+
   double delta_p, delta_q;
   int typeA, typeB, typeC;
 
