@@ -238,7 +238,7 @@ void ComputeThermoInteg::compute_vector()
         if (mode & DUAL)
             vector[1] = compute_du<CHARGE, DUAL>(nulldouble,delta_q);
     }
-    if (parameter_list & BOTH)
+    if ((parameter_list & PAIR) && (parameter_list & CHARGE))
     {
         if (mode & SINGLE)
             vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q);
@@ -413,7 +413,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 
 
     // taking care of cases for which epsilon or lambda become negative
-    if (parameter & PAIR)
+    if (parameter & PAIR || parameter & BOTH)
     {
         int bad_i = 0;
         int bad_j = 0;
@@ -476,7 +476,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
             }
         pair->reinit();
     }
-    if (parameter & CHARGE )
+    if (parameter & CHARGE || parameter & BOTH)
     {
         double chargeC;
         selected.typeA = typeA;
