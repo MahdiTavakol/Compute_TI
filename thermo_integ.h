@@ -39,7 +39,7 @@ class ComputeThermoInteg : public Compute {
   int parameter_list;
 
   double delta_p, delta_q;
-  double typeA, typeB, typeC;
+  int typeA, typeB, typeC;
 
   // Pair style parameters
   char * pstyle, * pparam;
@@ -71,6 +71,8 @@ class ComputeThermoInteg : public Compute {
   double energy_orig;
   double kvirial_orig[6];
   double *keatom_orig, **kvatom_orig;
+
+  int nmax;
 
 
   template <int parameter, int mode>  
