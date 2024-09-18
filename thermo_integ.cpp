@@ -272,6 +272,7 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
     update_lmp(); // update the lammps force and virial values
     uB = compute_epair();
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
+    restore_epsilon(); // restore epsilon values
     update_lmp(); // update the lammps force and virial values
     du_dl = (uB - uA) / dlambda;
     return du_dl;
@@ -501,6 +502,18 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                 q[i] = chargeC;
         }
     }
+}
+
+/* --------------------------------------------------------------------- */
+
+void ComputeThermoInteg::restore_epsilon()
+{
+    int ntypes = atom->ntypes;
+    
+    // I am not sure about the limits of these two loops, please double check them
+    for (int i = 0; i < ntypes + 1; i++)
+        for (int j = i; j < ntypes + 1; j++)
+            epsilon[i][j] = epsilon_init[i][j];
 }
 
 /* --------------------------------------------------------------------- */
