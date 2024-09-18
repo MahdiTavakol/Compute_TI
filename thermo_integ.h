@@ -91,6 +91,7 @@ class ComputeThermoInteg : public Compute {
   void backup_restore_qfev();
   template <int parameter, int mode>   
   void modify_epsilon_q(double& delta_p, double& delta_q);
+  void restore_epsilon();
   void count_atoms(selected_types& selected);
   void update_lmp();
   void compute_q_total();
