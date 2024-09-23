@@ -55,6 +55,9 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     parameter_list = 0;
     mode = 0;
 
+    delta_p = 0.0;
+    delta_q = 0.0;
+
     lambda = utils::numeric(FLERR,arg[3],false,lmp);
     dlambda = utils::numeric(FLERR,arg[4],false,lmp);
 
@@ -240,13 +243,11 @@ void ComputeThermoInteg::compute_vector()
         if (mode & DUAL)
             vector[1] = compute_du<CHARGE, DUAL>(nulldouble,delta_q);
     }
-    if ((parameter_list & PAIR) && (parameter_list & CHARGE))
-    {
-        if (mode & SINGLE)
-            vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q);
-        if (mode & DUAL)
-            vector[2] = compute_du<BOTH,DUAL>(delta_p,delta_q);
-    }
+
+    if (mode & SINGLE)
+        vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q);
+    if (mode & DUAL)
+        vector[2] = compute_du<BOTH,DUAL>(delta_p,delta_q);
 }
 
 /* ---------------------------------------------------------------------- */
