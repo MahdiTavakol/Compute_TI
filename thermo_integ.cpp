@@ -265,16 +265,19 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
         allocate_storage();
     }
     backup_restore_qfev<1>();      // backup charge, force, energy, virial array values
+    
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
     uA = compute_epair(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
     uB = compute_epair();
+    
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
-    update_lmp(); // update the lammps force and virial values
-    du_dl = (uB - uA) / dlambda;
+
+    du_dl = (uB - uA) / (2*dlambda); u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
     return du_dl;
 }
 
