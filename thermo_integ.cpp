@@ -168,7 +168,7 @@ void ComputeThermoInteg::init()
         pair_params["lj/cut/coul/cut/soft/omp"] = "lambda";
         pair_params["lj/cut/coul/long/soft"] = "lambda";
         pair_params["lj/cut/coul/long/soft/gpu"] = "lambda";
-        pair_params["lj/cut/coul/long/soft/omp"] = "lambdanulldoublenulldoublenulldouble";
+        pair_params["lj/cut/coul/long/soft/omp"] = "lambda";
         pair_params["lj/cut/tip4p/long/soft"] = "lambda";
         pair_params["lj/cut/tip4p/long/soft/omp"] = "lambda";
         pair_params["lj/charmm/coul/long/soft"] = "lambda";
@@ -221,7 +221,9 @@ void ComputeThermoInteg::compute_vector()
     vector[1] = 0.0;
     vector[2] = 0.0;
 
-    double nulldouble;
+    double nulldouble = 0.0;
+
+    if (update->dt == 0) return;
    
     if (parameter_list & PAIR)
     {
