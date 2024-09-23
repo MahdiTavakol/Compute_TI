@@ -277,7 +277,7 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
 
-    du_dl = (uB - uA) / (2*dlambda); u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
+    du_dl = (uB - uA) / (2*dlambda); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
     return du_dl;
 }
 
