@@ -558,7 +558,7 @@ void ComputeThermoInteg::count_atoms(selected_types& selected)
 
 void ComputeThermoInteg::update_lmp() {
     int eflag = 1;
-    int vflag = 1;
+    int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
         force->pair->compute(eflag, vflag);
