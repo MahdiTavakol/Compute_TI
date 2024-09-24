@@ -656,7 +656,7 @@ double ComputeThermoInteg::compute_epair_atom()
    double natom_local = 0; // I know it is an atom number but at the end I have to convert it to a double! And I do not want to use two MPI_Allreduce commands.
    double natom = 0;
 
-   if (force->pair && firce->pair_=->compute_flag)
+   if (force->pair && force->pair->compute_flag)
    {
       double *eatom = force->pair->eatom;
       for (int i = 0; i < npair; i++)
