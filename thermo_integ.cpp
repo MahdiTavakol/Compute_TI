@@ -10,6 +10,8 @@
 
    See the README file in the top-level LAMMPS directory.
 ------------------------------------------------------------------------- */
+/* ----  Compute Thermo_Integ written by Mahdi Tavakol (Oxford) mahditavakol90@gmail.com ----
+   ----  For some reasons that I do not know why it does not work with the intel package ---- */
 
 #include "compute_thermo_integ.h"
 
