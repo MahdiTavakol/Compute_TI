@@ -226,6 +226,7 @@ void ComputeThermoInteg::compute_vector()
 
     double nulldouble = 0.0;
 
+    if (update->ntimestep == 0) return;
    
     if (parameter_list & PAIR)
     {
