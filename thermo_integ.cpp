@@ -508,6 +508,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                 q[i] = chargeC;
         }
 
+       /*
         double q_tot_local = 0.0;
         double q_tot = 0.0;
         for (int i = 0; i < atom->nlocal; i++)
@@ -516,6 +517,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         }
         MPI_Allreduce(&q_tot_local,&q_tot,1,MPI_DOUBLE,MPI_SUM,world);
         if (comm->me == 0) error->warning(FLERR,"Total system charge is {}",q_tot);
+        */
     }
 }
 
