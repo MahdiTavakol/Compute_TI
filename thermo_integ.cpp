@@ -273,11 +273,11 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    uA = compute_epair(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    uA = compute_epair_atom(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
     
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
-    uB = compute_epair();
+    uB = compute_epair_atom();
     
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
@@ -629,4 +629,59 @@ double ComputeThermoInteg::compute_epair()
     MPI_Allreduce(&energy_local, &energy, 1, MPI_DOUBLE, MPI_SUM, world);
     energy /= static_cast<double> (natoms); // To convert to kcal/mol the total energy must be devided by the number of atoms
     return energy;
+}
+
+/* --------------------------------------------------------------------- 
+   Taken from src/compute_pe_atom.cpp
+   --------------------------------------------------------------------- */
+
+double ComputeThermoInteg::compute_epair_atom()
+{
+   /*invoked_scaler = update->ntimestep;
+   if (update->eflag_atom != invoked_scaler)
+      error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
+   */
+   int npair = atom->nlocal;
+   int ntotal = atom->nlocal;
+   int nkspace = atom->nlocal;
+   if (force->newton) npair += atom->nghost;
+   if (force->newton) ntotal += atom->nghost;
+   if (force->kspace && force->kspace->tip4pflag) nkspace += atom->nghost;
+
+   int *mask = atom->mask;
+
+   
+   double energy_local = 0.0;
+   double energy = 0.0;
+   double natom_local = 0; // I know it is an atom number but at the end I have to convert it to a double! And I do not want to use two MPI_Allreduce commands.
+   double natom = 0;
+
+   if (force->pair && firce->pair_=->compute_flag)
+   {
+      double *eatom = force->pair->eatom;
+      for (int i = 0; i < npair; i++)
+         if (mask[i] & groupbit)
+         {
+            natom_local += 1.0;
+            energy_local += eatom[i];
+         }
+   }
+   if (force->kspace && force->kspace->compute_flag())
+   {
+      double *eatom = force->kspace->compute_flag())
+      for (int i = 0; i < nkspace; i++)
+         if (mask[i] & groupbit)
+            energy_local += eatom[i];
+   }
+
+   double *local = new double[2];
+   double *total = new double[2];
+   local[0] = energy_local;
+   local[1] = natom_local;
+   MPI_Allreduce(&local,&total,2,MPI_DOUBLE,MPI_SUM,world);
+   energy = total[0];
+   natom = total[1];
+   energy /= natom;
+
+   return energy;
 }
