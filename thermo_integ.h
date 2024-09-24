@@ -32,7 +32,9 @@ class ComputeThermoInteg : public Compute {
   void init() override;
   void setup() override;
   void compute_vector() override;
-
+  void compute_peratom() override {}; // I just wanted LAMMPS to consider this as peratom compute so the peratom energies be tallied in this timestep.
+  
+  
  private:
   int mode;
   // Parameters
@@ -40,7 +42,7 @@ class ComputeThermoInteg : public Compute {
 
   double lambda, dlambda;
 
-  double delta_p, delta_q;
+  double delta_p, delta_q, delta_qC;
   int typeA, typeB, typeC;
 
   // Pair style parameters
@@ -48,13 +50,6 @@ class ComputeThermoInteg : public Compute {
   Pair * pair;
   int pdim;
 
-  struct selected_types {int typeA;
-	                 int typeB; 
-	                 int typeC;
-                         int countA;
-                         int countB;
-                         int countC;};
-  selected_types selected;
 
   class Fix *fixgpu;
 
@@ -92,10 +87,11 @@ class ComputeThermoInteg : public Compute {
   template <int parameter, int mode>   
   void modify_epsilon_q(double& delta_p, double& delta_q);
   void restore_epsilon();
-  void count_atoms(selected_types& selected);
+  void count_atoms(int* types, int* counts, const int num);
   void update_lmp();
   void compute_q_total();
   double compute_epair();
+  double compute_epair_atom();
 };
 
 }    // namespace LAMMPS_NS
