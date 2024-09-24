@@ -668,7 +668,7 @@ double ComputeThermoInteg::compute_epair_atom()
    }
    if (force->kspace && force->kspace->compute_flag())
    {
-      double *eatom = force->kspace->compute_flag())
+      double *eatom = force->kspace->eatom;
       for (int i = 0; i < nkspace; i++)
          if (mask[i] & groupbit)
             energy_local += eatom[i];
