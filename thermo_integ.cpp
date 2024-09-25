@@ -232,6 +232,8 @@ void ComputeThermoInteg::compute_vector()
     double nulldouble  = 0.0;
     
     if (update->ntimestep == 0) return;
+    
+
    
     if (parameter_list & PAIR)
     {
@@ -258,13 +260,13 @@ void ComputeThermoInteg::compute_vector()
 /* ---------------------------------------------------------------------- */
 
 template <int parameter, int mode>
-double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
+double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
 {
     double uA, uB, du_dl;
-    double lA_p = -delta_p;
-    double lA_q = -delta_q;
-    double lB_p = delta_p;
-    double lB_q = delta_q;
+    double lA_p = - _delta_p;
+    double lA_q = - _delta_q;
+    double lB_p = _delta_p;
+    double lB_q = _delta_q;
     /* check if there is enough allocated memory */
     if (nmax < atom->nmax)
     {
@@ -411,13 +413,15 @@ void ComputeThermoInteg::backup_restore_qfev()
    -------------------------------------------------------------- */
 
 template <int parameter, int mode>
-void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
+void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
 {
     int nlocal = atom->nlocal;
     int* mask = atom->mask;
     int* type = atom->type;
     int ntypes = atom->ntypes;
     double* q = atom->q;
+    
+    double _delta_qC = 0.0;
 
 
 
@@ -430,44 +434,44 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         if (delta_p < 0)
         {
             for (int i = typeA; i < ntypes + 1; i++)
-                if (epsilon_init[typeA][i] < -delta_p)
+                if (epsilon_init[typeA][i] < - _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
-                    delta_p = -epsilon_init[typeA][i];
+                    _delta_p = -epsilon_init[typeA][i];
                 }
             for (int i = 1; i < typeA; i++)
-                if (epsilon_init[i][typeA] < -delta_p)
+                if (epsilon_init[i][typeA] < - _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
-                    delta_p = -epsilon_init[i][typeA];
+                    _delta_p = -epsilon_init[i][typeA];
                 }
         }
         if (delta_p > 0 && mode == DUAL)
         {
             for (int i = typeB; i < ntypes + 1; i++)
-                if (epsilon_init[typeB][i] < delta_p)
+                if (epsilon_init[typeB][i] < _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
-                    delta_p = epsilon_init[typeA][i];
+                    _delta_p = epsilon_init[typeA][i];
                 }
             for (int i = 1; i < typeB; i++)
-                if (epsilon_init[i][typeB] < delta_p)
+                if (epsilon_init[i][typeB] < _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
-                    delta_p = epsilon_init[i][typeA];
+                    _delta_p = epsilon_init[i][typeA];
                 }
         }
         if (modified_delta) 
         {
-           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p,bad_i,bad_j);
+           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
         }
 
         for (int i = 0; i < ntypes + 1; i++)
@@ -475,11 +479,11 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
             {
                 if (i == typeA || j == typeA)
                 {
-                    epsilon[i][j] = epsilon_init[i][j] + delta_p;
+                    epsilon[i][j] = epsilon_init[i][j] + _delta_p;
                 }
                 if (mode == DUAL)
                     if (i == typeB || j == typeB)
-                        epsilon[i][j] = epsilon_init[i][j] - delta_p;
+                        epsilon[i][j] = epsilon_init[i][j] - _delta_p;
             }
        
         pair->reinit();
@@ -493,19 +497,19 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         {
            changed_natoms = true;
            natoms = atom->natoms;
-           set_delta_qC();
+           set_delta_qC(_delta_q,_delta_qC);
         }
-        set_delta_qC();
+        set_delta_qC(_delta_q, _delta_qC);
          
         for (int i = 0; i < nlocal; i++)
         {
             if (type[i] == typeA)
-                q[i] += delta_q;
+                q[i] += _delta_q;
             if (mode == DUAL)
                 if (type[i] == typeB)
-                    q[i] -= delta_q;
+                    q[i] -= _delta_q;
             if (type[i] == typeC)
-                q[i] += delta_qC;
+                q[i] += _delta_qC;
         }
 
         if (changed_natoms) compute_q_total();
@@ -523,27 +527,6 @@ void ComputeThermoInteg::restore_epsilon()
     for (int i = 0; i < ntypes + 1; i++)
         for (int j = i; j < ntypes + 1; j++)
             epsilon[i][j] = epsilon_init[i][j];
-}
-
-/* --------------------------------------------------------------------- */
-
-void ComputeThermoInteg::count_atoms(int* types, int* counts, const int num)
-{
-    int nlocal = atom->nlocal;
-    double* q = atom->q;
-    int* type = atom->type;
-    
-    int* counts_local = new int[num];
-    
-    for (int j = 0; j < num; j++) counts_local[j] = 0;
-
-    for (int i = 0; i < nlocal; i++)
-        for (int j = 0; j < num; j++)
-             if (type[i] == types[j]) counts_local[j]++;
-
-    MPI_Allreduce(counts_local, counts, num, MPI_INT, MPI_SUM, world);
-    
-    delete [] counts_local;
 }
 
 /* ----------------------------------------------------------------------
@@ -576,32 +559,34 @@ void ComputeThermoInteg::update_lmp() {
    to call this function whenever natoms changes 
    --------------------------------------------------------------------- */
 
-void ComputeThermoInteg::set_delta_qC()
-{
-   int* selected_types, * selected_counts;
-               
-   selected_types = new int[3];
-   selected_counts = new int[3];
-        
-   selected_types[0] = typeA;
-   selected_types[2] = typeC;
-        
-   if (mode & SINGLE)
-      selected_types[1] = 0;
-   else if (mode & DUAL)
-      selected_types[1] = typeB;
-        
-   count_atoms(selected_types, selected_counts, 3);
+void ComputeThermoInteg::set_delta_qC(const double & _delta_q, double & _delta_qC)
+{               
+   int* selected_types        = new int[3] {typeA, (mode & SINGLE) ? 0: typeB, typeC};
+   int* selected_counts_local = new int[3] {}; // Inititalize all the elements with the default constructor which is 0.0 here
+   int* selected_counts       = new int[3] {}; // Inititalize all the elements with the default constructor which is 0.0 here
    
+   int nlocal = atom->nlocal;
+   double* q = atom->q;
+   int* type = atom->type;
+      
+      
+   for (int i = 0; i < nlocal; i++)
+      for (int j = 0; j < num; j++)
+           if (type[i] == types[j]) selected_counts_local[j]++;
+
+   MPI_Allreduce(counts_local, counts, 3, MPI_INT, MPI_SUM, world);
+
+
 
    if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
    if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
-   if ( selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
+   if (selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
        
-   delta_qC = -(selected_counts[0] * delta_q + selected_counts[1] * (-delta_q)) / selected_counts[2];
+   _delta_qC = -(selected_counts[0] * _delta_q + selected_counts[1] * (- _delta_q)) / selected_counts[2];
    
        
    delete [] selected_types;
+   delete [] selected_counts_local;
    delete [] selected_counts;
 }
 
@@ -620,7 +605,7 @@ void ComputeThermoInteg::compute_q_total()
 
     MPI_Allreduce(&q_local, &q_total, 1, MPI_DOUBLE, MPI_SUM, world);
 
-    if ((q_total >= tolerance || q_total <= -tolerance) && comm->me == 0)
+    //if ((q_total >= tolerance || q_total <= -tolerance) && comm->me == 0)
         error->warning(FLERR, "q_total in compute TI is non-zero: {}", q_total);
 }
 
