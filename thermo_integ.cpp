@@ -575,7 +575,7 @@ void ComputeThermoInteg::set_delta_qC(const double & _delta_q, double & _delta_q
       
    for (int i = 0; i < nlocal; i++)
       for (int j = 0; j < 3; j++)
-          if (type[i] == types[j])
+          if (type[i] == selected_types[j])
               selected_counts_local[j]++;
 
    MPI_Allreduce(selected_counts_local, selected_counts, 3, MPI_INT, MPI_SUM, world);
@@ -597,7 +597,71 @@ void ComputeThermoInteg::set_delta_qC(const double & _delta_q, double & _delta_q
 /* --------------------------------------------------------------------- */
 
 void ComputeThermoInteg::compute_q_total()
+{/* ----------------------------------------------------------------------
+   LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
+   https://www.lammps.org/, Sandia National Laboratories
+   LAMMPS development team: developers@lammps.org
+
+   Copyright (2003) Sandia Corporation.  Under the terms of Contract
+   DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
+   certain rights in this software.  This software is distributed under
+   the GNU General Public License.
+
+   See the README file in the top-level LAMMPS directory.
+------------------------------------------------------------------------- */
+/* ----  Compute Thermo_Integ written by Mahdi Tavakol (Oxford) mahditavakol90@gmail.com ----
+   ----  For some reasons that I do not know why it does not work with the intel package ---- */
+
+#include "compute_thermo_integ.h"
+
+#include "atom.h"
+#include "comm.h"
+#include "domain.h"
+#include "error.h"
+#include "fix.h"
+#include "force.h"
+#include "input.h"
+#include "kspace.h"
+#include "memory.h"
+#include "modify.h"
+#include "pair.h"
+#include "pair_hybrid.h"
+#include "timer.h"
+#include "update.h"
+#include "variable.h"
+/* A compute style to do thermodynamic integration written by Mahdi Tavakol (Oxford) mahditavakol90@gmail.com */
+
+using namespace LAMMPS_NS;
+
+enum { SINGLE = 1 << 0, DUAL = 1 << 1 };
+enum {
+    PAIR = 1 << 0,
+    CHARGE = 1 << 1,
+};
+
+/* ---------------------------------------------------------------------- */
+
+ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Compute(lmp, narg, arg)
 {
+    if (narg < 10) error->all(FLERR, "Illegal number of arguments in compute ti");
+
+
+    peflag = 1;
+    peatomflag = 1;
+    peratom_flag = 1;
+    
+    
+    scalar_flag = 0;
+    vector_flag = 1;
+    size_vector = 3;
+    peratom_flag = 1; // I need to have per atom energies tallied. 
+    
+    extvector = 0;
+
+    vector = new double[3];
+
+    parameter_list = 0;
+
     double* q = atom->q;
     double nlocal = atom->nlocal;
     double q_local = 0.0;
