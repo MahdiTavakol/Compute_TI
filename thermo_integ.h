@@ -70,6 +70,7 @@ class ComputeThermoInteg : public Compute {
   double *keatom_orig, **kvatom_orig;
 
   int nmax;
+  bingint natoms;
 
 
   template <int parameter, int mode>  
@@ -89,6 +90,7 @@ class ComputeThermoInteg : public Compute {
   void restore_epsilon();
   void count_atoms(int* types, int* counts, const int num);
   void update_lmp();
+  void set_delta_qC();
   void compute_q_total();
   double compute_epair();
   double compute_epair_atom();
