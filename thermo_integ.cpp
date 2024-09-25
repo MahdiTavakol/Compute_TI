@@ -340,26 +340,32 @@ void ComputeThermoInteg::deallocate_storage()
 /* ----------------------------------------------------------------------
    Forward-reverse copy function to be used in backup_restore_qfev()
    ---------------------------------------------------------------------- */
+template <int direction>
+void ComputeThermoInteg::forward_reverse_copy(double& a, double& b);
 
-template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double& a, double& b)
+template  <>
+void ComputeThermoInteg::forward_reverse_copy<1>(double& a, double& b)
 {
-    if (direction == 1) a = b;
-    if (direction == -1) b = a;
+    a = b;
+}
+
+template <>
+void ComputeThermoInteg::forward_reverse_copy<-1>(double& a, double& b)
+{
+   b = a;
 }
 
 template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double* a, double* b, int i)
+void ComputeThermoInteg::forward_reverse_copy(double* a, double* b, int m)
 {
-    if (direction == 1) a[i] = b[i];
-    if (direction == -1) b[i] = a[i];
+       for (int i = 0; i < m; i++) forward_reverse_copy<direction>(a[i],b[i]);
 }
 
 template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double** a, double** b, int i, int j)
+void ComputeThermoInteg::forward_reverse_copy(double** a, double** b, int m, int n)
 {
-    if (direction == 1) a[i][j] = b[i][j];
-    if (direction == -1) b[i][j] = a[i][j];
+    for (int i = 0; i < m; i++)
+          forward_reverse_copy<direction>(a[i],b[i],n);
 }
 
 /* ----------------------------------------------------------------------
@@ -379,45 +385,37 @@ void ComputeThermoInteg::backup_restore_qfev()
     if (force->newton || force->kspace->tip4pflag) natom += atom->nghost;
 
     double** f = atom->f;
-    for (i = 0; i < natom; i++)
-        for (int j = 0; j < 3; j++)
-            forward_reverse_copy<direction>(f_orig, f, i, j);
+    forward_reverse_copy<direction>(f_orig, f, natom, 3);
 
     double* q = atom->q;
-    for (int i = 0; i < natom; i++)
-        forward_reverse_copy<direction>(q_orig, q, i);
+    forward_reverse_copy<direction>(q_orig, q, natom);
 
     forward_reverse_copy<direction>(eng_vdwl_orig, force->pair->eng_vdwl);
     forward_reverse_copy<direction>(eng_coul_orig, force->pair->eng_coul);
 
-    for (int i = 0; i < 6; i++)
-        forward_reverse_copy<direction>(pvirial_orig, force->pair->virial, i);
+    
+    forward_reverse_copy<direction>(pvirial_orig, force->pair->virial, 6);
 
     if (update->eflag_atom) {
         double* peatom = force->pair->eatom;
-        for (i = 0; i < natom; i++) forward_reverse_copy<direction>(peatom_orig, peatom, i);
+        forward_reverse_copy<direction>(peatom_orig, peatom, natom);
     }
     if (update->vflag_atom) {
         double** pvatom = force->pair->vatom;
-        for (i = 0; i < natom; i++)
-            for (int j = 0; j < 6; j++)
-                forward_reverse_copy<direction>(pvatom_orig, pvatom, i, j);
+        forward_reverse_copy<direction>(pvatom_orig, pvatom, natom,6);
     }
 
     if (force->kspace) {
         forward_reverse_copy<direction>(energy_orig, force->kspace->energy);
-        for (int j = 0; j < 6; j++)
-            forward_reverse_copy<direction>(kvirial_orig, force->kspace->virial, j);
+        forward_reverse_copy<direction>(kvirial_orig, force->kspace->virial, 6);
 
         if (update->eflag_atom) {
             double* keatom = force->kspace->eatom;
-            for (i = 0; i < natom; i++) forward_reverse_copy<direction>(keatom_orig, keatom, i);
+            forward_reverse_copy<direction>(keatom_orig, keatom, natom);
         }
         if (update->vflag_atom) {
             double** kvatom = force->kspace->vatom;
-            for (i = 0; i < natom; i++)
-                for (int j = 0; j < 6; j++)
-                    forward_reverse_copy<direction>(kvatom_orig, kvatom, i, j);
+            forward_reverse_copy<direction>(kvatom_orig, kvatom, natom,6);
         }
     }
 }
