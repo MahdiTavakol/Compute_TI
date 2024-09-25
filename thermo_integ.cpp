@@ -121,7 +121,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     fixgpu = nullptr;
 
     nmax = atom->nmax;
-    natoms = 0; 
+    natoms = 0; // I did this on purpose so that the delta_qC is updated at least in the first step.
 
     allocate_storage();
 }
@@ -231,9 +231,12 @@ void ComputeThermoInteg::compute_vector()
 
     double nulldouble  = 0.0;
     
-    if (update->ntimestep == 0) return;
     
-
+    if (natoms != atom->natoms)
+    {  
+       natoms = atom->natoms;
+       set_delta_qC(delta_q,delta_qC);
+    }
    
     if (parameter_list & PAIR)
     {
@@ -267,6 +270,7 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     double lA_q = - _delta_q;
     double lB_p = _delta_p;
     double lB_q = _delta_q;
+    
     /* check if there is enough allocated memory */
     if (nmax < atom->nmax)
     {
@@ -278,7 +282,7 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    //uA = compute_epair_atom(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    //uA = compute_epair_atom(); // I need to define my own version using compute pe/atom 
     uA = compute_epair_atom();
     
     
@@ -292,6 +296,109 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
 
     du_dl = (uB - uA) / (2*dlambda); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
     return du_dl;
+}
+
+
+/* --------------------------------------------------------------
+
+   -------------------------------------------------------------- */
+
+template <int parameter, int mode>
+void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
+{
+    int nlocal = atom->nlocal;
+    int* mask = atom->mask;
+    int* type = atom->type;
+    int ntypes = atom->ntypes;
+    double* q = atom->q;
+    double _delta_qC;
+
+
+
+    // taking care of cases for which epsilon or lambda become negative
+    if (parameter & PAIR)
+    {
+        int bad_i = 0;
+        int bad_j = 0;
+        bool modified_delta = false;
+        if (delta_p < 0)
+        {
+            for (int i = typeA; i < ntypes + 1; i++)
+                if (epsilon_init[typeA][i] < - _delta_p)
+                {
+                    if (epsilon[i][i] == 0) continue;
+                    bad_j = i;
+                    modified_delta = true;
+                    _delta_p = -epsilon_init[typeA][i];
+                }
+            for (int i = 1; i < typeA; i++)
+                if (epsilon_init[i][typeA] < - _delta_p)
+                {
+                    if (epsilon[i][i] == 0) continue;
+                    bad_i = i;
+                    modified_delta = true;
+                    _delta_p = -epsilon_init[i][typeA];
+                }
+        }
+        if (delta_p > 0 && mode & DUAL)
+        {
+            for (int i = typeB; i < ntypes + 1; i++)
+                if (epsilon_init[typeB][i] < _delta_p)
+                {
+                    if (epsilon[i][i] == 0) continue;
+                    bad_j = i;
+                    modified_delta = true;
+                    _delta_p = epsilon_init[typeA][i];
+                }
+            for (int i = 1; i < typeB; i++)
+                if (epsilon_init[i][typeB] < _delta_p)
+                {
+                    if (epsilon[i][i] == 0) continue;
+                    bad_i = i;
+                    modified_delta = true;
+                    _delta_p = epsilon_init[i][typeA];
+                }
+        }
+        if (modified_delta) 
+        {
+           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
+        }
+
+        for (int i = 0; i < ntypes + 1; i++)
+            for (int j = i; j < ntypes + 1; j++)
+            {
+                if (i == typeA || j == typeA)
+                {
+                    epsilon[i][j] = epsilon_init[i][j] + _delta_p;
+                }
+                if (mode & DUAL)
+                    if (i == typeB || j == typeB)
+                        epsilon[i][j] = epsilon_init[i][j] - _delta_p;
+            }
+       
+        pair->reinit();
+    }
+   
+    if (parameter & CHARGE)
+    {   
+        // Since this part involves a MPI_Allreduce can have a large overhead --> should be moved to outside this function so that it could be called everytime the number of atoms change.
+        if (_delta_q >= 0) _delta_qC = delta_qC;
+        else _delta_qC = - delta_qC;
+
+         
+        for (int i = 0; i < nlocal; i++)
+        {
+            if (type[i] == typeA)
+                q[i] += _delta_q;
+            if (mode & DUAL)
+                if (type[i] == typeB)
+                    q[i] -= _delta_q;
+            if (type[i] == typeC)
+                q[i] += _delta_qC;
+        }
+
+        compute_q_total();
+    }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -404,116 +511,6 @@ void ComputeThermoInteg::backup_restore_qfev()
             double** kvatom = force->kspace->vatom;
             forward_reverse_copy<direction>(kvatom_orig, kvatom, natom, 6);
         }
-    }
-}
-
-
-/* --------------------------------------------------------------
-
-   -------------------------------------------------------------- */
-
-template <int parameter, int mode>
-void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
-{
-    int nlocal = atom->nlocal;
-    int* mask = atom->mask;
-    int* type = atom->type;
-    int ntypes = atom->ntypes;
-    double* q = atom->q;
-    
-    double _delta_qC = 0.0;
-
-
-
-    // taking care of cases for which epsilon or lambda become negative
-    if (parameter & PAIR)
-    {
-        int bad_i = 0;
-        int bad_j = 0;
-        bool modified_delta = false;
-        if (delta_p < 0)
-        {
-            for (int i = typeA; i < ntypes + 1; i++)
-                if (epsilon_init[typeA][i] < - _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_j = i;
-                    modified_delta = true;
-                    _delta_p = -epsilon_init[typeA][i];
-                }
-            for (int i = 1; i < typeA; i++)
-                if (epsilon_init[i][typeA] < - _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_i = i;
-                    modified_delta = true;
-                    _delta_p = -epsilon_init[i][typeA];
-                }
-        }
-        if (delta_p > 0 && mode == DUAL)
-        {
-            for (int i = typeB; i < ntypes + 1; i++)
-                if (epsilon_init[typeB][i] < _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_j = i;
-                    modified_delta = true;
-                    _delta_p = epsilon_init[typeA][i];
-                }
-            for (int i = 1; i < typeB; i++)
-                if (epsilon_init[i][typeB] < _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_i = i;
-                    modified_delta = true;
-                    _delta_p = epsilon_init[i][typeA];
-                }
-        }
-        if (modified_delta) 
-        {
-           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
-        }
-
-        for (int i = 0; i < ntypes + 1; i++)
-            for (int j = i; j < ntypes + 1; j++)
-            {
-                if (i == typeA || j == typeA)
-                {
-                    epsilon[i][j] = epsilon_init[i][j] + _delta_p;
-                }
-                if (mode == DUAL)
-                    if (i == typeB || j == typeB)
-                        epsilon[i][j] = epsilon_init[i][j] - _delta_p;
-            }
-       
-        pair->reinit();
-    }
-   
-    if (parameter & CHARGE)
-    {   
-        // If the total number of atoms have changed during the simulation, the delta_qC should be modified so that the system remains charge neutral
-        bool changed_natoms = false;
-        if (natoms != atom->natoms)
-        {
-           changed_natoms = true;
-           natoms = atom->natoms;
-           set_delta_qC(_delta_q,_delta_qC);
-        }
-        set_delta_qC(_delta_q,_delta_qC);
-         
-        for (int i = 0; i < nlocal; i++)
-        {
-            if (type[i] == typeA)
-                q[i] += _delta_q;
-            if (mode == DUAL)
-                if (type[i] == typeB)
-                    q[i] -= _delta_q;
-            if (type[i] == typeC)
-                q[i] += _delta_qC;
-        }
-
-        if (changed_natoms) compute_q_total();
-        compute_q_total();
     }
 }
 
