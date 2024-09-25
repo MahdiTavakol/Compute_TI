@@ -38,7 +38,6 @@ enum { SINGLE = 1 << 0, DUAL = 1 << 1 };
 enum {
     PAIR = 1 << 0,
     CHARGE = 1 << 1,
-    BOTH = 1 << 2
 };
 
 /* ---------------------------------------------------------------------- */
@@ -47,9 +46,17 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
 {
     if (narg < 10) error->all(FLERR, "Illegal number of arguments in compute ti");
 
+
+    peflag = 1;
+    peatomflag = 1;
+    peratom_flag = 1;
+    
+    
     scalar_flag = 0;
     vector_flag = 1;
     size_vector = 3;
+    peratom_flag = 1; // I need to have per atom energies tallied. 
+    
     extvector = 0;
 
     vector = new double[3];
@@ -103,7 +110,6 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
         else error->all(FLERR, "Unknown compute TI keyword {}", arg[iarg]);
     }
 
-    if ((parameter_list & PAIR) && (parameter_list & CHARGE)) parameter_list |= BOTH;
 
 
     // allocate space for charge, force, energy, virial arrays
@@ -134,29 +140,26 @@ ComputeThermoInteg::~ComputeThermoInteg()
 
 void ComputeThermoInteg::setup()
 {
-    if (parameter_list & PAIR)
-    {
-        pair = nullptr;
-        if (lmp->suffix_enable)
-            pair = force->pair_match(std::string(pstyle) + "/" + lmp->suffix, 1);
-        if (pair == nullptr)
-            pair = force->pair_match(pstyle, 1); // I need to define the pstyle variable
-        void* ptr1 = pair->extract(pparam, pdim);
-        if (ptr1 == nullptr)
-            error->all(FLERR, "Compute TI pair style {} was not found", pstyle);
-        if (pdim != 2)
-            error->all(FLERR, "Pair style parameter {} is not compatible with compute TI", pparam);
+    pair = nullptr;
+    if (lmp->suffix_enable)
+        pair = force->pair_match(std::string(pstyle) + "/" + lmp->suffix, 1);
+    if (pair == nullptr)
+        pair = force->pair_match(pstyle, 1); // I need to define the pstyle variable
+    void* ptr1 = pair->extract(pparam, pdim);
+    if (ptr1 == nullptr)
+        error->all(FLERR, "Compute TI pair style {} was not found", pstyle);
+    if (pdim != 2)
+        error->all(FLERR, "Pair style parameter {} is not compatible with compute TI", pparam);
 
-        epsilon = (double**)ptr1;
+    epsilon = (double**)ptr1;
 
-        int ntypes = atom->ntypes;
-        memory->create(epsilon_init, ntypes + 1, ntypes + 1, "compute_TI:epsilon_init");
+    int ntypes = atom->ntypes;
+    memory->create(epsilon_init, ntypes + 1, ntypes + 1, "compute_TI:epsilon_init");
 
-        // I am not sure about the limits of these two loops, please double check them
-        for (int i = 0; i < ntypes + 1; i++)
-            for (int j = i; j < ntypes + 1; j++)
-                epsilon_init[i][j] = epsilon[i][j];
-    }
+    for (int i = 0; i < ntypes + 1; i++)
+        for (int j = i; j < ntypes + 1; j++)
+             epsilon_init[i][j] = epsilon[i][j];
+   
 }
 
 /* ---------------------------------------------------------------------- */
@@ -226,9 +229,11 @@ void ComputeThermoInteg::compute_vector()
     vector[1] = 0.0;
     vector[2] = 0.0;
 
-    double nulldouble = 0.0;
-
+    double nulldouble  = 0.0;
+    
     if (update->ntimestep == 0) return;
+    
+
    
     if (parameter_list & PAIR)
     {
@@ -247,21 +252,21 @@ void ComputeThermoInteg::compute_vector()
     }
 
     if (mode & SINGLE)
-        vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q);
+        vector[2] = compute_du<PAIR|CHARGE,SINGLE>(delta_p,delta_q);
     if (mode & DUAL)
-        vector[2] = compute_du<BOTH,DUAL>(delta_p,delta_q);
+        vector[2] = compute_du<PAIR|CHARGE,DUAL>(delta_p,delta_q);
 }
 
 /* ---------------------------------------------------------------------- */
 
 template <int parameter, int mode>
-double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
+double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
 {
     double uA, uB, du_dl;
-    double lA_p = -delta_p;
-    double lA_q = -delta_q;
-    double lB_p = delta_p;
-    double lB_q = delta_q;
+    double lA_p = - _delta_p;
+    double lA_q = - _delta_q;
+    double lB_p = _delta_p;
+    double lB_q = _delta_q;
     /* check if there is enough allocated memory */
     if (nmax < atom->nmax)
     {
@@ -273,10 +278,13 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    uA = compute_epair_atom(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    //uA = compute_epair_atom(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    uA = compute_epair_atom();
+    
     
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
+    //uB = compute_epair_atom();
     uB = compute_epair_atom();
     
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
@@ -296,6 +304,7 @@ void ComputeThermoInteg::allocate_storage()
        nmax contains the maximum number of nlocal
        and nghost atoms.
     */
+    memory->create(vector_atom,nmax, "compute_TI:vector_atom");
     memory->create(f_orig, nmax, 3, "compute_TI:f_orig");
     memory->create(q_orig, nmax, "compute_TI:q_orig");
     memory->create(peatom_orig, nmax, "compute_TI:peatom_orig");
@@ -310,6 +319,7 @@ void ComputeThermoInteg::allocate_storage()
 
 void ComputeThermoInteg::deallocate_storage()
 {
+    memory->destroy(vector_atom);
     memory->destroy(q_orig);
     memory->destroy(f_orig);
     memory->destroy(peatom_orig);
@@ -334,17 +344,15 @@ void ComputeThermoInteg::forward_reverse_copy(double& a, double& b)
 }
 
 template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double* a, double* b, int i)
+void ComputeThermoInteg::forward_reverse_copy(double* a, double* b, int m)
 {
-    if (direction == 1) a[i] = b[i];
-    if (direction == -1) b[i] = a[i];
+    for (int i = 0; i < m; i++) forward_reverse_copy<direction>(a[i],b[i]);
 }
 
 template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double** a, double** b, int i, int j)
+void ComputeThermoInteg::forward_reverse_copy(double** a, double** b, int m, int n)
 {
-    if (direction == 1) a[i][j] = b[i][j];
-    if (direction == -1) b[i][j] = a[i][j];
+    for (int i = 0; i < m; i++) forward_reverse_copy<direction>(a[i],b[i],n);
 }
 
 /* ----------------------------------------------------------------------
@@ -364,65 +372,61 @@ void ComputeThermoInteg::backup_restore_qfev()
     if (force->newton || force->kspace->tip4pflag) natom += atom->nghost;
 
     double** f = atom->f;
-    for (i = 0; i < natom; i++)
-        for (int j = 0; j < 3; j++)
-            forward_reverse_copy<direction>(f_orig, f, i, j);
+    forward_reverse_copy<direction>(f_orig, f, natom, 3);
 
     double* q = atom->q;
-    for (int i = 0; i < natom; i++)
-        forward_reverse_copy<direction>(q_orig, q, i);
+    forward_reverse_copy<direction>(q_orig, q, natom);
 
     forward_reverse_copy<direction>(eng_vdwl_orig, force->pair->eng_vdwl);
     forward_reverse_copy<direction>(eng_coul_orig, force->pair->eng_coul);
 
-    for (int i = 0; i < 6; i++)
-        forward_reverse_copy<direction>(pvirial_orig, force->pair->virial, i);
+    
+    forward_reverse_copy<direction>(pvirial_orig, force->pair->virial, 6);
 
     if (update->eflag_atom) {
         double* peatom = force->pair->eatom;
-        for (i = 0; i < natom; i++) forward_reverse_copy<direction>(peatom_orig, peatom, i);
+        forward_reverse_copy<direction>(peatom_orig, peatom, natom);
     }
     if (update->vflag_atom) {
         double** pvatom = force->pair->vatom;
-        for (i = 0; i < natom; i++)
-            for (int j = 0; j < 6; j++)
-                forward_reverse_copy<direction>(pvatom_orig, pvatom, i, j);
+        forward_reverse_copy<direction>(pvatom_orig, pvatom, natom, 6);
     }
 
     if (force->kspace) {
         forward_reverse_copy<direction>(energy_orig, force->kspace->energy);
-        for (int j = 0; j < 6; j++)
-            forward_reverse_copy<direction>(kvirial_orig, force->kspace->virial, j);
+        forward_reverse_copy<direction>(kvirial_orig, force->kspace->virial, 6);
 
         if (update->eflag_atom) {
             double* keatom = force->kspace->eatom;
-            for (i = 0; i < natom; i++) forward_reverse_copy<direction>(keatom_orig, keatom, i);
+            forward_reverse_copy<direction>(keatom_orig, keatom, natom);
         }
         if (update->vflag_atom) {
             double** kvatom = force->kspace->vatom;
-            for (i = 0; i < natom; i++)
-                for (int j = 0; j < 6; j++)
-                    forward_reverse_copy<direction>(kvatom_orig, kvatom, i, j);
+            forward_reverse_copy<direction>(kvatom_orig, kvatom, natom, 6);
         }
     }
 }
 
+
 /* --------------------------------------------------------------
 
    -------------------------------------------------------------- */
+
 template <int parameter, int mode>
-void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
+void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
 {
     int nlocal = atom->nlocal;
     int* mask = atom->mask;
     int* type = atom->type;
     int ntypes = atom->ntypes;
     double* q = atom->q;
+    
+    double _delta_qC = 0.0;
 
 
 
     // taking care of cases for which epsilon or lambda become negative
-    if (parameter & PAIR || parameter & BOTH)
+    if (parameter & PAIR)
     {
         int bad_i = 0;
         int bad_j = 0;
@@ -430,96 +434,86 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         if (delta_p < 0)
         {
             for (int i = typeA; i < ntypes + 1; i++)
-                if (epsilon_init[typeA][i] < -delta_p)
+                if (epsilon_init[typeA][i] < - _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
-                    delta_p = -epsilon_init[typeA][i];
+                    _delta_p = -epsilon_init[typeA][i];
                 }
             for (int i = 1; i < typeA; i++)
-                if (epsilon_init[i][typeA] < -delta_p)
+                if (epsilon_init[i][typeA] < - _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
-                    delta_p = -epsilon_init[i][typeA];
+                    _delta_p = -epsilon_init[i][typeA];
                 }
         }
         if (delta_p > 0 && mode == DUAL)
         {
             for (int i = typeB; i < ntypes + 1; i++)
-                if (epsilon_init[typeB][i] < delta_p)
+                if (epsilon_init[typeB][i] < _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_j = i;
                     modified_delta = true;
-                    delta_p = epsilon_init[typeA][i];
+                    _delta_p = epsilon_init[typeA][i];
                 }
             for (int i = 1; i < typeB; i++)
-                if (epsilon_init[i][typeB] < delta_p)
+                if (epsilon_init[i][typeB] < _delta_p)
                 {
                     if (epsilon[i][i] == 0) continue;
                     bad_i = i;
                     modified_delta = true;
-                    delta_p = epsilon_init[i][typeA];
+                    _delta_p = epsilon_init[i][typeA];
                 }
         }
         if (modified_delta) 
         {
-           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p,bad_i,bad_j);
+           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
         }
-
-
 
         for (int i = 0; i < ntypes + 1; i++)
             for (int j = i; j < ntypes + 1; j++)
             {
                 if (i == typeA || j == typeA)
                 {
-                    epsilon[i][j] = epsilon_init[i][j] + delta_p;
+                    epsilon[i][j] = epsilon_init[i][j] + _delta_p;
                 }
                 if (mode == DUAL)
                     if (i == typeB || j == typeB)
-                        epsilon[i][j] = epsilon_init[i][j] - delta_p;
+                        epsilon[i][j] = epsilon_init[i][j] - _delta_p;
             }
+       
         pair->reinit();
     }
-    if (parameter & CHARGE || parameter & BOTH)
-    {
-        double chargeC;
-        selected.typeA = typeA;
-        selected.typeB = typeB;
-        selected.typeC = typeC;
-        count_atoms(selected);
-
-
-        if (selected.countA == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
-        if (selected.countB == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
-        if (selected.countC == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
-        chargeC = (selected.countA * delta_q + selected.countB * (-delta_q)) / selected.countC;
-
+   
+    if (parameter & CHARGE)
+    {   
+        // If the total number of atoms have changed during the simulation, the delta_qC should be modified so that the system remains charge neutral
+        bool changed_natoms = false;
+        if (natoms != atom->natoms)
+        {
+           changed_natoms = true;
+           natoms = atom->natoms;
+           set_delta_qC(_delta_q,_delta_qC);
+        }
+        set_delta_qC(_delta_q, _delta_qC);
+         
         for (int i = 0; i < nlocal; i++)
         {
             if (type[i] == typeA)
-                q[i] += delta_q;
+                q[i] += _delta_q;
             if (mode == DUAL)
                 if (type[i] == typeB)
-                    q[i] -= delta_q;
+                    q[i] -= _delta_q;
             if (type[i] == typeC)
-                q[i] = chargeC;
+                q[i] += _delta_qC;
         }
 
-       /*
-        double q_tot_local = 0.0;
-        double q_tot = 0.0;
-        for (int i = 0; i < atom->nlocal; i++)
-        {
-           q_tot += q[i];
-        }
-        MPI_Allreduce(&q_tot_local,&q_tot,1,MPI_DOUBLE,MPI_SUM,world);
-        if (comm->me == 0) error->warning(FLERR,"Total system charge is {}",q_tot);
-        */
+        if (changed_natoms) compute_q_total();
+        compute_q_total();
     }
 }
 
@@ -535,45 +529,12 @@ void ComputeThermoInteg::restore_epsilon()
             epsilon[i][j] = epsilon_init[i][j];
 }
 
-/* --------------------------------------------------------------------- */
-
-void ComputeThermoInteg::count_atoms(selected_types& selected)
-{
-    int nlocal = atom->nlocal;
-    double* q = atom->q;
-    int* type = atom->type;
-
-    int typeA = selected.typeA;
-    int typeB = selected.typeB;
-    int typeC = selected.typeC;
-    int& countA = selected.countA;
-    int& countB = selected.countB;
-    int& countC = selected.countC;
-
-    int* counts_local = new int[3];
-    int* counts = new int[3];
-
-    for (int i = 0; i < nlocal; i++)
-    {
-        if (type[i] == typeA) counts_local[0]++;
-        if (type[i] == typeB) counts_local[1]++;
-        if (type[i] == typeC) counts_local[2]++;
-    }
-
-    MPI_Allreduce(counts_local, counts, 3, MPI_INT, MPI_SUM, world);
-
-    countA = counts[0];
-    countB = counts[1];
-    countC = counts[2];
-
-}
-
 /* ----------------------------------------------------------------------
    modify force and kspace in lammps according
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = 1;
+    int eflag = ENERGY_ATOM;
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
@@ -587,6 +548,50 @@ void ComputeThermoInteg::update_lmp() {
 
     // accumulate force/energy/virial from /gpu pair styles
     if (fixgpu) fixgpu->post_force(vflag);
+}
+
+
+/* ---------------------------------------------------------------------
+   Checking the total system charge
+
+   I did not put this in the constructor in purpose since it is possible
+   that the number of atoms change during the simulation. So, it is better
+   to call this function whenever natoms changes 
+   
+   Also since this function uses MPI_Allreduce, its usage should be limited
+   for the computational efficiency purposes. 
+   --------------------------------------------------------------------- */
+
+void ComputeThermoInteg::set_delta_qC(const double & _delta_q, double & _delta_qC)
+{               
+   int* selected_types        = new int[3] {typeA, (mode & SINGLE) ? 0: typeB, typeC};
+   int* selected_counts_local = new int[3] {}; // Inititalize all the elements with the default constructor which is 0.0 here
+   int* selected_counts       = new int[3] {}; // Inititalize all the elements with the default constructor which is 0.0 here
+   
+   int nlocal = atom->nlocal;
+   double* q = atom->q;
+   int* type = atom->type;
+      
+      
+   for (int i = 0; i < nlocal; i++)
+      for (int j = 0; j < 3; j++)
+          if (type[i] == types[j])
+              selected_counts_local[j]++;
+
+   MPI_Allreduce(selected_counts_local, selected_counts, 3, MPI_INT, MPI_SUM, world);
+
+
+
+   if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
+   if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
+   if (selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
+       
+   _delta_qC = -(selected_counts[0] * _delta_q + selected_counts[1] * (- _delta_q)) / selected_counts[2];
+   
+       
+   delete [] selected_types;
+   delete [] selected_counts_local;
+   delete [] selected_counts;
 }
 
 /* --------------------------------------------------------------------- */
@@ -604,7 +609,7 @@ void ComputeThermoInteg::compute_q_total()
 
     MPI_Allreduce(&q_local, &q_total, 1, MPI_DOUBLE, MPI_SUM, world);
 
-    if ((q_total >= tolerance || q_total <= -tolerance) && comm->me == 0)
+    //if ((q_total >= tolerance || q_total <= -tolerance) && comm->me == 0)
         error->warning(FLERR, "q_total in compute TI is non-zero: {}", q_total);
 }
 
@@ -612,8 +617,8 @@ void ComputeThermoInteg::compute_q_total()
 
 double ComputeThermoInteg::compute_epair()
 {
-    //if (update->eflag_global != update->ntimestep)
-    //   error->all(FLERR,"Energy was not tallied on the needed timestep");
+    if (update->eflag_global != update->ntimestep)
+       error->all(FLERR,"Energy was not tallied on the needed timestep");
 
     int natoms = atom->natoms;
 
@@ -634,13 +639,14 @@ double ComputeThermoInteg::compute_epair()
 /* --------------------------------------------------------------------- 
    Taken from src/compute_pe_atom.cpp
    --------------------------------------------------------------------- */
-
+   
 double ComputeThermoInteg::compute_epair_atom()
 {
-   /*invoked_scaler = update->ntimestep;
-   if (update->eflag_atom != invoked_scaler)
-      error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
-   */
+   //invoked_scalar = update->ntimestep;
+   //if (update->eflag_atom != invoked_scalar)
+   //   error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
+      
+   
    int npair = atom->nlocal;
    int ntotal = atom->nlocal;
    int nkspace = atom->nlocal;
@@ -650,6 +656,7 @@ double ComputeThermoInteg::compute_epair_atom()
 
    int *mask = atom->mask;
 
+   
    
    double energy_local = 0.0;
    double energy = 0.0;
@@ -666,7 +673,7 @@ double ComputeThermoInteg::compute_epair_atom()
             energy_local += eatom[i];
          }
    }
-   if (force->kspace && force->kspace->compute_flag())
+   if (force->kspace && force->kspace->compute_flag)
    {
       double *eatom = force->kspace->eatom;
       for (int i = 0; i < nkspace; i++)
@@ -678,10 +685,13 @@ double ComputeThermoInteg::compute_epair_atom()
    double *total = new double[2];
    local[0] = energy_local;
    local[1] = natom_local;
-   MPI_Allreduce(&local,&total,2,MPI_DOUBLE,MPI_SUM,world);
+   MPI_Allreduce(local,total,2,MPI_DOUBLE,MPI_SUM,world);
    energy = total[0];
    natom = total[1];
    energy /= natom;
+   
+   delete [] local;
+   delete [] total;
 
    return energy;
 }
