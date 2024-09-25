@@ -38,7 +38,6 @@ enum { SINGLE = 1 << 0, DUAL = 1 << 1 };
 enum {
     PAIR = 1 << 0,
     CHARGE = 1 << 1,
-    BOTH = 1 << 2
 };
 
 /* ---------------------------------------------------------------------- */
@@ -111,7 +110,6 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
         else error->all(FLERR, "Unknown compute TI keyword {}", arg[iarg]);
     }
 
-    if ((parameter_list & PAIR) && (parameter_list & CHARGE)) parameter_list |= BOTH;
 
 
     // allocate space for charge, force, energy, virial arrays
@@ -142,31 +140,26 @@ ComputeThermoInteg::~ComputeThermoInteg()
 
 void ComputeThermoInteg::setup()
 {
-    if (parameter_list & PAIR)
-    {
-        pair = nullptr;
-        if (lmp->suffix_enable)
-            pair = force->pair_match(std::string(pstyle) + "/" + lmp->suffix, 1);
-        if (pair == nullptr)
-            pair = force->pair_match(pstyle, 1); // I need to define the pstyle variable
-        void* ptr1 = pair->extract(pparam, pdim);
-        if (ptr1 == nullptr)
-            error->all(FLERR, "Compute TI pair style {} was not found", pstyle);
-        if (pdim != 2)
-            error->all(FLERR, "Pair style parameter {} is not compatible with compute TI", pparam);
+    pair = nullptr;
+    if (lmp->suffix_enable)
+        pair = force->pair_match(std::string(pstyle) + "/" + lmp->suffix, 1);
+    if (pair == nullptr)
+        pair = force->pair_match(pstyle, 1); // I need to define the pstyle variable
+    void* ptr1 = pair->extract(pparam, pdim);
+    if (ptr1 == nullptr)
+        error->all(FLERR, "Compute TI pair style {} was not found", pstyle);
+    if (pdim != 2)
+        error->all(FLERR, "Pair style parameter {} is not compatible with compute TI", pparam);
 
-        epsilon = (double**)ptr1;
+    epsilon = (double**)ptr1;
 
-        int ntypes = atom->ntypes;
-        memory->create(epsilon_init, ntypes + 1, ntypes + 1, "compute_TI:epsilon_init");
+    int ntypes = atom->ntypes;
+    memory->create(epsilon_init, ntypes + 1, ntypes + 1, "compute_TI:epsilon_init");
 
-        // I am not sure about the limits of these two loops, please double check them
-        for (int i = 0; i < ntypes + 1; i++)
-            for (int j = i; j < ntypes + 1; j++)
-                epsilon_init[i][j] = epsilon[i][j];
-    }
+    for (int i = 0; i < ntypes + 1; i++)
+        for (int j = i; j < ntypes + 1; j++)
+             epsilon_init[i][j] = epsilon[i][j];
    
-    set_delta_qC();
 }
 
 /* ---------------------------------------------------------------------- */
@@ -236,8 +229,8 @@ void ComputeThermoInteg::compute_vector()
     vector[1] = 0.0;
     vector[2] = 0.0;
 
-    double nulldouble = 0.0;
-
+    double nulldouble  = 0.0;
+    
     if (update->ntimestep == 0) return;
    
     if (parameter_list & PAIR)
@@ -257,9 +250,9 @@ void ComputeThermoInteg::compute_vector()
     }
 
     if (mode & SINGLE)
-        vector[2] = compute_du<BOTH,SINGLE>(delta_p,delta_q);
+        vector[2] = compute_du<PAIR|CHARGE,SINGLE>(delta_p,delta_q);
     if (mode & DUAL)
-        vector[2] = compute_du<BOTH,DUAL>(delta_p,delta_q);
+        vector[2] = compute_du<PAIR|CHARGE,DUAL>(delta_p,delta_q);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -349,17 +342,15 @@ void ComputeThermoInteg::forward_reverse_copy(double& a, double& b)
 }
 
 template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double* a, double* b, int i)
+void ComputeThermoInteg::forward_reverse_copy(double* a, double* b, int m)
 {
-    if (direction == 1) a[i] = b[i];
-    if (direction == -1) b[i] = a[i];
+    for (int i = 0; i < m; i++) forward_reverse_copy<direction>(a[i],b[i]);
 }
 
 template  <int direction>
-void ComputeThermoInteg::forward_reverse_copy(double** a, double** b, int i, int j)
+void ComputeThermoInteg::forward_reverse_copy(double** a, double** b, int m, int n)
 {
-    if (direction == 1) a[i][j] = b[i][j];
-    if (direction == -1) b[i][j] = a[i][j];
+    for (int i = 0; i < m; i++) forward_reverse_copy<direction>(a[i],b[i],n);
 }
 
 /* ----------------------------------------------------------------------
@@ -379,45 +370,37 @@ void ComputeThermoInteg::backup_restore_qfev()
     if (force->newton || force->kspace->tip4pflag) natom += atom->nghost;
 
     double** f = atom->f;
-    for (i = 0; i < natom; i++)
-        for (int j = 0; j < 3; j++)
-            forward_reverse_copy<direction>(f_orig, f, i, j);
+    forward_reverse_copy<direction>(f_orig, f, natom, 3);
 
     double* q = atom->q;
-    for (int i = 0; i < natom; i++)
-        forward_reverse_copy<direction>(q_orig, q, i);
+    forward_reverse_copy<direction>(q_orig, q, natom);
 
     forward_reverse_copy<direction>(eng_vdwl_orig, force->pair->eng_vdwl);
     forward_reverse_copy<direction>(eng_coul_orig, force->pair->eng_coul);
 
-    for (int i = 0; i < 6; i++)
-        forward_reverse_copy<direction>(pvirial_orig, force->pair->virial, i);
+    
+    forward_reverse_copy<direction>(pvirial_orig, force->pair->virial, 6);
 
     if (update->eflag_atom) {
         double* peatom = force->pair->eatom;
-        for (i = 0; i < natom; i++) forward_reverse_copy<direction>(peatom_orig, peatom, i);
+        forward_reverse_copy<direction>(peatom_orig, peatom, natom);
     }
     if (update->vflag_atom) {
         double** pvatom = force->pair->vatom;
-        for (i = 0; i < natom; i++)
-            for (int j = 0; j < 6; j++)
-                forward_reverse_copy<direction>(pvatom_orig, pvatom, i, j);
+        forward_reverse_copy<direction>(pvatom_orig, pvatom, natom, 6);
     }
 
     if (force->kspace) {
         forward_reverse_copy<direction>(energy_orig, force->kspace->energy);
-        for (int j = 0; j < 6; j++)
-            forward_reverse_copy<direction>(kvirial_orig, force->kspace->virial, j);
+        forward_reverse_copy<direction>(kvirial_orig, force->kspace->virial, 6);
 
         if (update->eflag_atom) {
             double* keatom = force->kspace->eatom;
-            for (i = 0; i < natom; i++) forward_reverse_copy<direction>(keatom_orig, keatom, i);
+            forward_reverse_copy<direction>(keatom_orig, keatom, natom);
         }
         if (update->vflag_atom) {
             double** kvatom = force->kspace->vatom;
-            for (i = 0; i < natom; i++)
-                for (int j = 0; j < 6; j++)
-                    forward_reverse_copy<direction>(kvatom_orig, kvatom, i, j);
+            forward_reverse_copy<direction>(kvatom_orig, kvatom, natom, 6);
         }
     }
 }
@@ -510,7 +493,9 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         {
            changed_natoms = true;
            natoms = atom->natoms;
+           set_delta_qC();
         }
+        set_delta_qC();
          
         for (int i = 0; i < nlocal; i++)
         {
@@ -524,6 +509,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
         }
 
         if (changed_natoms) compute_q_total();
+        compute_q_total();
     }
 }
 
@@ -565,10 +551,7 @@ void ComputeThermoInteg::count_atoms(int* types, int* counts, const int num)
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    /* ENERGY_LOCAL -> Just local energy values are tallied.
-       ENERGY_ATOM  -> per atom energy values are also tallied. 
-    */
-    int eflag = ENERGY_ATOM; 
+    int eflag = ENERGY_ATOM;
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
@@ -609,13 +592,14 @@ void ComputeThermoInteg::set_delta_qC()
       selected_types[1] = typeB;
         
    count_atoms(selected_types, selected_counts, 3);
+   
 
    if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
    if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
    if ( selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
        
-   if (mode & DUAL) delta_qC = -(selected_counts[0] * delta_q + selected_counts[1] * (-delta_q)) / selected_counts[2];
-   else if (mode & SINGLE) delta_qC = -(selected_counts[0]* delta_q) / selected_counts[2];
+   delta_qC = -(selected_counts[0] * delta_q + selected_counts[1] * (-delta_q)) / selected_counts[2];
+   
        
    delete [] selected_types;
    delete [] selected_counts;
