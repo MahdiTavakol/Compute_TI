@@ -397,7 +397,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
                 q[i] += _delta_qC;
         }
 
-        compute_q_total();
+        //compute_q_total();
     }
 }
 
