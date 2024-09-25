@@ -92,9 +92,8 @@ class ComputeThermoInteg : public Compute {
   template <int parameter, int mode>   
   void modify_epsilon_q(double& delta_p, double& delta_q);
   void restore_epsilon();
-  void count_atoms(int* types, int* counts, const int num);
   void update_lmp();
-  void set_delta_qC();
+  void set_delta_qC(const double & _delta_q, double & _delta_qC);
   void compute_q_total();
   double compute_epair();
   double compute_epair_atom();
