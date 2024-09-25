@@ -70,12 +70,13 @@ class ComputeThermoInteg : public Compute {
   double *keatom_orig, **kvatom_orig;
 
   int nmax;
+  bigint natoms;
 
 
-  template <int parameter, int mode>  
-  double compute_du(double &delta_p, double &delta_q);
+
   void allocate_storage();
   void deallocate_storage();
+
   template  <int direction>
   void forward_reverse_copy(double &,double &);
   template  <int direction>
@@ -84,11 +85,16 @@ class ComputeThermoInteg : public Compute {
   void forward_reverse_copy(double** ,double** , int , int );
   template <int direction>
   void backup_restore_qfev();
+
+
+  template <int parameter, int mode>  
+  double compute_du(double &delta_p, double &delta_q);
   template <int parameter, int mode>   
   void modify_epsilon_q(double& delta_p, double& delta_q);
   void restore_epsilon();
   void count_atoms(int* types, int* counts, const int num);
   void update_lmp();
+  void set_delta_qC();
   void compute_q_total();
   double compute_epair();
   double compute_epair_atom();
