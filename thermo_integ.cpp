@@ -30,7 +30,6 @@
 #include "timer.h"
 #include "update.h"
 #include "variable.h"
-/* A compute style to do thermodynamic integration written by Mahdi Tavakol (Oxford) mahditavakol90@gmail.com */
 
 using namespace LAMMPS_NS;
 
@@ -122,6 +121,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     fixgpu = nullptr;
 
     nmax = atom->nmax;
+    natoms = 0; 
 
     allocate_storage();
 }
@@ -499,7 +499,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
            natoms = atom->natoms;
            set_delta_qC(_delta_q,_delta_qC);
         }
-        set_delta_qC(_delta_q, _delta_qC);
+        set_delta_qC(_delta_q,_delta_qC);
          
         for (int i = 0; i < nlocal; i++)
         {
