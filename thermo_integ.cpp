@@ -425,6 +425,7 @@ void ComputeThermoInteg::backup_restore_qfev()
 /* --------------------------------------------------------------
 
    -------------------------------------------------------------- */
+
 template <int parameter, int mode>
 void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 {
@@ -437,7 +438,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 
 
     // taking care of cases for which epsilon or lambda become negative
-    if (parameter & PAIR || parameter & BOTH)
+    if (parameter & PAIR)
     {
         int bad_i = 0;
         int bad_j = 0;
@@ -485,8 +486,6 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
            error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p,bad_i,bad_j);
         }
 
-
-
         for (int i = 0; i < ntypes + 1; i++)
             for (int j = i; j < ntypes + 1; j++)
             {
@@ -498,10 +497,21 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                     if (i == typeB || j == typeB)
                         epsilon[i][j] = epsilon_init[i][j] - delta_p;
             }
+       
         pair->reinit();
     }
-    if (parameter & CHARGE || parameter & BOTH)
-    {        
+   
+    if (parameter & CHARGE)
+    {   
+        // If the total number of atoms have changed during the simulation, the delta_qC should be modified so that the system remains charge neutral
+        bool changed_natoms = false;
+        if (natoms != atom->natoms)
+        {
+           changed_natoms = true;
+           natoms = atom->natoms;
+           check_total_charge();
+        }
+         
         for (int i = 0; i < nlocal; i++)
         {
             if (type[i] == typeA)
@@ -511,7 +521,9 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                     q[i] -= delta_q;
             if (type[i] == typeC)
                 q[i] += delta_qC;
-        }       
+        }
+
+        if (changed_natoms) compute_q_total();
     }
 }
 
@@ -572,6 +584,10 @@ void ComputeThermoInteg::update_lmp() {
 
 /* ---------------------------------------------------------------------
    Checking the total system charge
+
+   I did not put this in the constructor in purpose since it is possible
+   that the number of atoms change during the simulation. So, it is better
+   to call this function whenever natoms changes 
    --------------------------------------------------------------------- */
 
 void ComputeThermoInteg::set_delta_qC()
