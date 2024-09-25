@@ -159,7 +159,7 @@ void ComputeThermoInteg::setup()
     for (int i = 0; i < ntypes + 1; i++)
         for (int j = i; j < ntypes + 1; j++)
              epsilon_init[i][j] = epsilon[i][j];
-   
+             
 }
 
 /* ---------------------------------------------------------------------- */
@@ -282,14 +282,14 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    //uA = compute_epair_atom(); // I need to define my own version using compute pe/atom 
-    uA = compute_epair_atom();
+    uA = compute_epair(); // I need to define my own version using compute pe/atom 
+    //uA = compute_epair_atom();
     
     
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
+    uB = compute_epair();
     //uB = compute_epair_atom();
-    uB = compute_epair_atom();
     
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
@@ -531,7 +531,7 @@ void ComputeThermoInteg::restore_epsilon()
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = ENERGY_ATOM;
+    int eflag = 1; //ENERGY_ATOM;
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
@@ -629,6 +629,8 @@ double ComputeThermoInteg::compute_epair()
        their difference afterall */
 
     MPI_Allreduce(&energy_local, &energy, 1, MPI_DOUBLE, MPI_SUM, world);
+    
+    if (force->pair && force->kspace) energy += force->kspace->energy;
     energy /= static_cast<double> (natoms); // To convert to kcal/mol the total energy must be devided by the number of atoms
     return energy;
 }
