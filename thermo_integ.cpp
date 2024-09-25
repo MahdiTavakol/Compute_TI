@@ -165,48 +165,8 @@ void ComputeThermoInteg::setup()
             for (int j = i; j < ntypes + 1; j++)
                 epsilon_init[i][j] = epsilon[i][j];
     }
-    
-    
    
-        
-    int* selected_types, * selected_counts;
-               
-    selected_types = new int[3];
-    selected_counts = new int[3];
-        
-    selected_types[0] = typeA;
-    selected_types[2] = typeC;
-        
-    if (mode & SINGLE)
-    {
-        selected_types[1] = 0;
-    }
-    else if (mode & DUAL)
-    {
-            selected_types[1] = typeB;
-    }
-        
-    count_atoms(selected_types, selected_counts, 3);
-
-    if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
-    if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
-    if ( selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
-       
-    if (mode & DUAL) delta_qC = -(selected_counts[0] * delta_q + selected_counts[1] * (-delta_q)) / selected_counts[2];
-    else if (mode & SINGLE) delta_qC = -(selected_counts[0]* delta_q) / selected_counts[2];
-    
-    double q_local = 0.0;
-    double q_tot = 0.0;
-    for (int i = 0; i < atom->nlocal; i++)
-    {
-        q_local += q[i];
-    }
-    MPI_Allreduce(&q_local,&q_tot,1,MPI_DOUBLE,MPI_SUM,world);
-    if (comm->me == 0) error->warning(FLERR,"Total system charge is {}",q_tot);
-        
-    delete [] selected_types;
-    delete [] selected_counts;
-   
+    set_delta_qC();
 }
 
 /* ---------------------------------------------------------------------- */
@@ -462,9 +422,11 @@ void ComputeThermoInteg::backup_restore_qfev()
     }
 }
 
+
 /* --------------------------------------------------------------
 
    -------------------------------------------------------------- */
+
 template <int parameter, int mode>
 void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 {
@@ -477,7 +439,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 
 
     // taking care of cases for which epsilon or lambda become negative
-    if (parameter & PAIR || parameter & BOTH)
+    if (parameter & PAIR)
     {
         int bad_i = 0;
         int bad_j = 0;
@@ -525,8 +487,6 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
            error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p,bad_i,bad_j);
         }
 
-
-
         for (int i = 0; i < ntypes + 1; i++)
             for (int j = i; j < ntypes + 1; j++)
             {
@@ -538,10 +498,20 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                     if (i == typeB || j == typeB)
                         epsilon[i][j] = epsilon_init[i][j] - delta_p;
             }
+       
         pair->reinit();
     }
-    if (parameter & CHARGE || parameter & BOTH)
-    {        
+   
+    if (parameter & CHARGE)
+    {   
+        // If the total number of atoms have changed during the simulation, the delta_qC should be modified so that the system remains charge neutral
+        bool changed_natoms = false;
+        if (natoms != atom->natoms)
+        {
+           changed_natoms = true;
+           natoms = atom->natoms;
+        }
+         
         for (int i = 0; i < nlocal; i++)
         {
             if (type[i] == typeA)
@@ -551,7 +521,9 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                     q[i] -= delta_q;
             if (type[i] == typeC)
                 q[i] += delta_qC;
-        }       
+        }
+
+        if (changed_natoms) compute_q_total();
     }
 }
 
@@ -607,6 +579,43 @@ void ComputeThermoInteg::update_lmp() {
 
     // accumulate force/energy/virial from /gpu pair styles
     if (fixgpu) fixgpu->post_force(vflag);
+}
+
+
+/* ---------------------------------------------------------------------
+   Checking the total system charge
+
+   I did not put this in the constructor in purpose since it is possible
+   that the number of atoms change during the simulation. So, it is better
+   to call this function whenever natoms changes 
+   --------------------------------------------------------------------- */
+
+void ComputeThermoInteg::set_delta_qC()
+{
+   int* selected_types, * selected_counts;
+               
+   selected_types = new int[3];
+   selected_counts = new int[3];
+        
+   selected_types[0] = typeA;
+   selected_types[2] = typeC;
+        
+   if (mode & SINGLE)
+      selected_types[1] = 0;
+   else if (mode & DUAL)
+      selected_types[1] = typeB;
+        
+   count_atoms(selected_types, selected_counts, 3);
+
+   if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
+   if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
+   if ( selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
+       
+   if (mode & DUAL) delta_qC = -(selected_counts[0] * delta_q + selected_counts[1] * (-delta_q)) / selected_counts[2];
+   else if (mode & SINGLE) delta_qC = -(selected_counts[0]* delta_q) / selected_counts[2];
+       
+   delete [] selected_types;
+   delete [] selected_counts;
 }
 
 /* --------------------------------------------------------------------- */
