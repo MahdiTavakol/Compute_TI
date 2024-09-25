@@ -78,11 +78,11 @@ class ComputeThermoInteg : public Compute {
   void deallocate_storage();
 
   template  <int direction>
-  void forward_reverse_copy(double &,double &);
+  static void forward_reverse_copy(double &,double &);
   template  <int direction>
-  void forward_reverse_copy(double* ,double* , int );
+  static void forward_reverse_copy(double* ,double* , int );
   template  <int direction>
-  void forward_reverse_copy(double** ,double** , int , int );
+  static void forward_reverse_copy(double** ,double** , int , int );
   template <int direction>
   void backup_restore_qfev();
 
