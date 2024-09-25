@@ -565,7 +565,10 @@ void ComputeThermoInteg::count_atoms(int* types, int* counts, const int num)
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = ENERGY_ATOM;
+    /* ENERGY_LOCAL -> Just local energy values are tallied.
+       ENERGY_ATOM  -> per atom energy values are also tallied. 
+    */
+    int eflag = ENERGY_ATOM; 
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
