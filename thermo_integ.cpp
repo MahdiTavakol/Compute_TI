@@ -282,14 +282,14 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    uA = compute_epair(); // I need to define my own version using compute pe/atom 
-    //uA = compute_epair_atom();
+    //uA = compute_epair(); // I need to define my own version using compute pe/atom 
+    uA = compute_epair_atom();
     
     
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
-    uB = compute_epair();
-    //uB = compute_epair_atom();
+    //uB = compute_epair();
+    uB = compute_epair_atom();
     
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
@@ -531,7 +531,7 @@ void ComputeThermoInteg::restore_epsilon()
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = 1; //ENERGY_ATOM;
+    int eflag = ENERGY_ATOM; //1
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
