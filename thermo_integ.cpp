@@ -47,9 +47,17 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
 {
     if (narg < 10) error->all(FLERR, "Illegal number of arguments in compute ti");
 
+
+    peflag = 1;
+    peatomflag = 1;
+    peratom_flag = 1;
+    
+    
     scalar_flag = 0;
     vector_flag = 1;
     size_vector = 3;
+    peratom_flag = 1; // I need to have per atom energies tallied. 
+    
     extvector = 0;
 
     vector = new double[3];
@@ -157,6 +165,7 @@ void ComputeThermoInteg::setup()
             for (int j = i; j < ntypes + 1; j++)
                 epsilon_init[i][j] = epsilon[i][j];
     }
+    check_total_charge();
 }
 
 /* ---------------------------------------------------------------------- */
@@ -273,10 +282,13 @@ double ComputeThermoInteg::compute_du(double& delta_p, double& delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    uA = compute_epair_atom(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    //uA = compute_epair_atom(); // I need to define my own version using compute pe/atom // HA is for the deprotonated state with lambda==0
+    uA = compute_epair_atom();
+    
     
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
+    //uB = compute_epair_atom();
     uB = compute_epair_atom();
     
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
@@ -296,6 +308,7 @@ void ComputeThermoInteg::allocate_storage()
        nmax contains the maximum number of nlocal
        and nghost atoms.
     */
+    memory->create(vector_atom,nmax, "compute_TI:vector_atom");
     memory->create(f_orig, nmax, 3, "compute_TI:f_orig");
     memory->create(q_orig, nmax, "compute_TI:q_orig");
     memory->create(peatom_orig, nmax, "compute_TI:peatom_orig");
@@ -310,6 +323,7 @@ void ComputeThermoInteg::allocate_storage()
 
 void ComputeThermoInteg::deallocate_storage()
 {
+    memory->destroy(vector_atom);
     memory->destroy(q_orig);
     memory->destroy(f_orig);
     memory->destroy(peatom_orig);
@@ -422,7 +436,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
 
 
     // taking care of cases for which epsilon or lambda become negative
-    if (parameter & PAIR || parameter & BOTH)
+    if (parameter & PAIR)
     {
         int bad_i = 0;
         int bad_j = 0;
@@ -485,20 +499,16 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
             }
         pair->reinit();
     }
-    if (parameter & CHARGE || parameter & BOTH)
-    {
-        double chargeC;
-        selected.typeA = typeA;
-        selected.typeB = typeB;
-        selected.typeC = typeC;
-        count_atoms(selected);
-
-
-        if (selected.countA == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
-        if (selected.countB == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
-        if (selected.countC == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
-        chargeC = (selected.countA * delta_q + selected.countB * (-delta_q)) / selected.countC;
-
+   
+    if (parameter & CHARGE)
+    {   
+        // If the total number of atoms have changed during the simulation, the delta_qC should be modified so that the system remains charge neutral
+        if (natoms != atom->natoms)
+        {
+           natoms = atom->natoms;
+           check_total_charge();
+        }
+         
         for (int i = 0; i < nlocal; i++)
         {
             if (type[i] == typeA)
@@ -507,19 +517,8 @@ void ComputeThermoInteg::modify_epsilon_q(double& delta_p, double& delta_q)
                 if (type[i] == typeB)
                     q[i] -= delta_q;
             if (type[i] == typeC)
-                q[i] = chargeC;
-        }
-
-       /*
-        double q_tot_local = 0.0;
-        double q_tot = 0.0;
-        for (int i = 0; i < atom->nlocal; i++)
-        {
-           q_tot += q[i];
-        }
-        MPI_Allreduce(&q_tot_local,&q_tot,1,MPI_DOUBLE,MPI_SUM,world);
-        if (comm->me == 0) error->warning(FLERR,"Total system charge is {}",q_tot);
-        */
+                q[i] += delta_qC;
+        }       
     }
 }
 
@@ -537,35 +536,23 @@ void ComputeThermoInteg::restore_epsilon()
 
 /* --------------------------------------------------------------------- */
 
-void ComputeThermoInteg::count_atoms(selected_types& selected)
+void ComputeThermoInteg::count_atoms(int* types, int* counts, const int num)
 {
     int nlocal = atom->nlocal;
     double* q = atom->q;
     int* type = atom->type;
-
-    int typeA = selected.typeA;
-    int typeB = selected.typeB;
-    int typeC = selected.typeC;
-    int& countA = selected.countA;
-    int& countB = selected.countB;
-    int& countC = selected.countC;
-
-    int* counts_local = new int[3];
-    int* counts = new int[3];
+    
+    int* counts_local = new int[num];
+    
+    for (int j = 0; j < num; j++) counts_local[j] = 0;
 
     for (int i = 0; i < nlocal; i++)
-    {
-        if (type[i] == typeA) counts_local[0]++;
-        if (type[i] == typeB) counts_local[1]++;
-        if (type[i] == typeC) counts_local[2]++;
-    }
+        for (int j = 0; j < num; j++)
+             if (type[i] == types[j]) counts_local[j]++;
 
-    MPI_Allreduce(counts_local, counts, 3, MPI_INT, MPI_SUM, world);
-
-    countA = counts[0];
-    countB = counts[1];
-    countC = counts[2];
-
+    MPI_Allreduce(counts_local, counts, num, MPI_INT, MPI_SUM, world);
+    
+    delete [] counts_local;
 }
 
 /* ----------------------------------------------------------------------
@@ -573,7 +560,7 @@ void ComputeThermoInteg::count_atoms(selected_types& selected)
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = 1;
+    int eflag = ENERGY_ATOM;
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
@@ -612,8 +599,8 @@ void ComputeThermoInteg::compute_q_total()
 
 double ComputeThermoInteg::compute_epair()
 {
-    //if (update->eflag_global != update->ntimestep)
-    //   error->all(FLERR,"Energy was not tallied on the needed timestep");
+    if (update->eflag_global != update->ntimestep)
+       error->all(FLERR,"Energy was not tallied on the needed timestep");
 
     int natoms = atom->natoms;
 
@@ -631,16 +618,58 @@ double ComputeThermoInteg::compute_epair()
     return energy;
 }
 
+/* ---------------------------------------------------------------------
+   Checking the total system charge
+   --------------------------------------------------------------------- */
+
+void ComputeThermoInteg::check_total_charge()
+{
+   int* selected_types, * selected_counts;
+               
+   selected_types = new int[3];
+   selected_counts = new int[3];
+        
+   selected_types[0] = typeA;
+   selected_types[2] = typeC;
+        
+   if (mode & SINGLE)
+      selected_types[1] = 0;
+   else if (mode & DUAL)
+      selected_types[1] = typeB;
+        
+   count_atoms(selected_types, selected_counts, 3);
+
+   if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
+   if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
+   if ( selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
+       
+   if (mode & DUAL) delta_qC = -(selected_counts[0] * delta_q + selected_counts[1] * (-delta_q)) / selected_counts[2];
+   else if (mode & SINGLE) delta_qC = -(selected_counts[0]* delta_q) / selected_counts[2];
+    
+   double q_local = 0.0;
+   double q_tot = 0.0;
+   for (int i = 0; i < atom->nlocal; i++)
+   {
+       q_local += q[i];
+   }
+   MPI_Allreduce(&q_local,&q_tot,1,MPI_DOUBLE,MPI_SUM,world);
+   if (comm->me == 0) error->warning(FLERR,"Total system charge is {}",q_tot);
+        
+   delete [] selected_types;
+   delete [] selected_counts;
+}
+
 /* --------------------------------------------------------------------- 
    Taken from src/compute_pe_atom.cpp
    --------------------------------------------------------------------- */
-
+   
 double ComputeThermoInteg::compute_epair_atom()
 {
-   /*invoked_scaler = update->ntimestep;
-   if (update->eflag_atom != invoked_scaler)
-      error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
-   */
+   //invoked_scalar = update->ntimestep;
+   //if (update->eflag_atom != invoked_scalar)
+   //   error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
+      
+   
    int npair = atom->nlocal;
    int ntotal = atom->nlocal;
    int nkspace = atom->nlocal;
@@ -650,6 +679,7 @@ double ComputeThermoInteg::compute_epair_atom()
 
    int *mask = atom->mask;
 
+   
    
    double energy_local = 0.0;
    double energy = 0.0;
@@ -666,7 +696,7 @@ double ComputeThermoInteg::compute_epair_atom()
             energy_local += eatom[i];
          }
    }
-   if (force->kspace && force->kspace->compute_flag())
+   if (force->kspace && force->kspace->compute_flag)
    {
       double *eatom = force->kspace->eatom;
       for (int i = 0; i < nkspace; i++)
@@ -678,10 +708,13 @@ double ComputeThermoInteg::compute_epair_atom()
    double *total = new double[2];
    local[0] = energy_local;
    local[1] = natom_local;
-   MPI_Allreduce(&local,&total,2,MPI_DOUBLE,MPI_SUM,world);
+   MPI_Allreduce(local,total,2,MPI_DOUBLE,MPI_SUM,world);
    energy = total[0];
    natom = total[1];
    energy /= natom;
+   
+   delete [] local;
+   delete [] total;
 
    return energy;
 }
