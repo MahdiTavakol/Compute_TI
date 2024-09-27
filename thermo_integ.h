@@ -58,7 +58,7 @@ class ComputeThermoInteg : public Compute {
   // This is just a pointer to the non-bonded interaction parameters and does not have any allocated memory
   // This should not be deallocated since the original pointer will be deallocated later on by the LAMMPS
   double **epsilon;
-  // _init is the initial value of hydrogen atoms properties which is multiplied by lambda at each step
+  // _init is the initial value of selected atom properties which is multiplied by lambda at each step
   double **epsilon_init;
 
   // _org is for value of parameters before the update_lmp() with modified parameters act on them
@@ -73,6 +73,9 @@ class ComputeThermoInteg : public Compute {
 
   int nmax;
   bigint natoms;
+
+  // Energy of each atom computed for states A and B
+  double *energy_peratom;
 
 
 
