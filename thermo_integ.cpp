@@ -115,7 +115,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     }
 
     delta_p = (p_final - p_initial) * dlambda;
-    delta_q = (q_final - p_initial) * dlambda;
+    delta_q = (q_final - q_initial) * dlambda;
 
     // allocate space for charge, force, energy, virial arrays
 
