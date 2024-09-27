@@ -290,19 +290,26 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     
     modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
     update_lmp(); // update the lammps force and virial values
-    uA = compute_epair(); // I need to define my own version using compute pe/atom 
-    //uA = compute_epair_atom();
+    if (groupbit == 1)
+        uA = compute_epair(); // I guess it should be more efficient for the group all
+    else 
+        uA = compute_epair_atom();
     
     
     modify_epsilon_q<parameter, mode>(lB_p,lB_q);
     update_lmp(); // update the lammps force and virial values
-    uB = compute_epair();
-    //uB = compute_epair_atom();
+
+    if (groupbit == 1)
+       uB = compute_epair(); // I guess it should be more efficient for the group all
+    else
+       uB = compute_epair_atom();
     
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
 
     du_dl = (uB - uA) / (2*dlambda); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
+
+    // Just for debugging purposes
     vector[3] = uA;
     vector[4] = uB;
     return du_dl;
@@ -541,8 +548,11 @@ void ComputeThermoInteg::restore_epsilon()
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = 1
+    int eflag = ENERGY_ATOM;
     int vflag = 0;
+    if (groupbit == 1) eflag = ENERGY_GLOBAL;
+
+   
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
         force->pair->compute(eflag, vflag);
