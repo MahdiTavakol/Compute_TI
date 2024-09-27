@@ -388,16 +388,14 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
            error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
         }
 
-        double *epsii = new double[ntypes+1];
-        for (int i = 1; i < ntypes + 1; i++) {
-            epsii[i] = epsilon_init[i][i];
-            if (i == typeA) epsii[i] += _delta_p;
-        }
+        // Just epsilon for typeA and interactions with typeA is changed.
+        epsilon[typeA][typeA] = epsilon_init[typeA][typeA] + _delta_p;
+       
         for (int i = 0; i < ntypes + 1 ; i++)
             for (int j = i; j < ntypes + 1; j++)
-               epsilon[i][j] = sqrt(epsii[i]*epsii[j]);
+               if (i == typeA || j = typeA)
+                   epsilon[i][j] = sqrt(epsilon[i][i]*epsilon[j][j]);
         
-        delete [] epsii;
         pair->reinit();
     }
    
