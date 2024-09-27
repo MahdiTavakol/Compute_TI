@@ -49,16 +49,17 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     peflag = 1;
     peatomflag = 1;
     peratom_flag = 1;
+    comm_reverse = 1;
     
     
     scalar_flag = 0;
     vector_flag = 1;
-    size_vector = 3;
+    size_vector = 5;
     peratom_flag = 1; // I need to have per atom energies tallied. 
     
     extvector = 0;
 
-    vector = new double[3];
+    vector = new double[5];
 
     parameter_list = 0;
     mode = 0;
@@ -131,6 +132,7 @@ ComputeThermoInteg::~ComputeThermoInteg()
 {
     deallocate_storage();
     memory->destroy(epsilon_init);
+    memory->destroy(energy_peratom);
     delete[] pparam;
     delete[] pstyle;
     delete[] vector;
@@ -159,6 +161,10 @@ void ComputeThermoInteg::setup()
     for (int i = 0; i < ntypes + 1; i++)
         for (int j = i; j < ntypes + 1; j++)
              epsilon_init[i][j] = epsilon[i][j];
+        
+        
+    int nmax = atom->nmax;     
+    memory->create(energy_peratom,nmax,"compute_TI:energy_peratom");
              
 }
 
@@ -228,6 +234,8 @@ void ComputeThermoInteg::compute_vector()
     vector[0] = 0.0;
     vector[1] = 0.0;
     vector[2] = 0.0;
+    vector[3] = 0.0;
+    vector[4] = 0.0;
 
     double nulldouble  = 0.0;
     
@@ -295,6 +303,8 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     restore_epsilon(); // restore epsilon values
 
     du_dl = (uB - uA) / (2*dlambda); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
+    vector[3] = uA;
+    vector[4] = uB;
     return du_dl;
 }
 
@@ -645,7 +655,7 @@ double ComputeThermoInteg::compute_epair_atom()
    //if (update->eflag_atom != invoked_scalar)
    //   error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
       
-   
+   int nlocal = atom->nlocal;
    int npair = atom->nlocal;
    int ntotal = atom->nlocal;
    int nkspace = atom->nlocal;
@@ -654,43 +664,86 @@ double ComputeThermoInteg::compute_epair_atom()
    if (force->kspace && force->kspace->tip4pflag) nkspace += atom->nghost;
 
    int *mask = atom->mask;
-
    
+   for (int i = 0; i < ntotal; i++) energy_peratom[i] = 0.0;
    
-   double energy_local = 0.0;
-   double energy = 0.0;
-   double natom_local = 0; // I know it is an atom number but at the end I have to convert it to a double! And I do not want to use two MPI_Allreduce commands.
-   double natom = 0;
-
    if (force->pair && force->pair->compute_flag)
    {
       double *eatom = force->pair->eatom;
       for (int i = 0; i < npair; i++)
-         if (mask[i] & groupbit)
-         {
-            natom_local += 1.0;
-            energy_local += eatom[i];
-         }
-   }
+          energy_peratom[i] += eatom[i];
+   } 
    if (force->kspace && force->kspace->compute_flag)
    {
       double *eatom = force->kspace->eatom;
       for (int i = 0; i < nkspace; i++)
-         if (mask[i] & groupbit)
-            energy_local += eatom[i];
+          energy_peratom[i] += eatom[i];
    }
-
+   
+   if (force->newton || (force->kspace && force->kspace->tip4pflag)) comm->reverse_comm(this);
+   
+   
+   double energy_local = 0.0;
+   double natom_local = 0.0;
+   
+   for (int i = 0; i < nlocal; i++)
+      if (mask[i] & groupbit)
+      {
+          natom_local += 1.0;
+          energy_local += energy_peratom[i];
+      }
+    
    double *local = new double[2];
    double *total = new double[2];
+   
+   
    local[0] = energy_local;
    local[1] = natom_local;
+   
    MPI_Allreduce(local,total,2,MPI_DOUBLE,MPI_SUM,world);
-   energy = total[0];
-   natom = total[1];
-   energy /= natom;
+   double energy = total[0];
+   double natom = total[1];
+   energy = energy / natom;
+   
    
    delete [] local;
    delete [] total;
 
    return energy;
+}
+
+/* ----------------------------------------------------------
+   Ghost atom contributions
+   from src/compute_pe_atom.cpp
+   ---------------------------------------------------------- */
+   
+int ComputeThermoInteg::pack_reverse_comm(int n, int first, double *buf)
+{
+   int i, m, last;
+   
+   m = 0; 
+   last = first + n;
+   for (i = first; i < last; i++) buf[m++] = energy_peratom[i];
+   return m;
+}
+
+/* ---------------------------------------------------------- */ 
+
+void ComputeThermoInteg::unpack_reverse_comm(int n, int *list, double * buf)
+{
+   int i, j , m;
+   
+   m = 0;
+   for (i = 0; i < n; i++) {
+      j = list[i];
+      energy_peratom[j] += buf[m++];
+   }
+}
+
+/* ---------------------------------------------------------- */
+
+double ComputeThermoInteg::memory_usage()
+{
+  double bytes = (double) nmax * sizeof(double);
+  return bytes;
 }
