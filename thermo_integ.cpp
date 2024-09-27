@@ -627,7 +627,7 @@ double ComputeThermoInteg::compute_epair()
     if (update->eflag_global != update->ntimestep)
        error->all(FLERR,"Energy was not tallied on the needed timestep");
 
-    int natoms = atom->natoms;
+    bigint natoms = atom->natoms;
 
     double energy_local = 0.0;
     double energy = 0.0;
