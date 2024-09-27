@@ -165,11 +165,13 @@ void ComputeThermoInteg::setup()
        int ntypes = atom->ntypes;
        memory->create(epsilon_init, ntypes + 1, ntypes + 1, "compute_TI:epsilon_init");
 
+       
        for (int i = 0; i < ntypes + 1; i++)
           for (int j = i; j < ntypes + 1; j++)
              epsilon_init[i][j] = epsilon[i][j];
-    }    
-        
+       
+    }
+  
     int nmax = atom->nmax;     
     memory->create(energy_peratom,nmax,"compute_TI:energy_peratom");
              
