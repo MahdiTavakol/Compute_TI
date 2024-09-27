@@ -42,6 +42,8 @@ class ComputeThermoInteg : public Compute {
 
   double lambda, dlambda;
 
+  double p_initial, p_final, q_initial, q_final;
+
   double delta_p, delta_q, delta_qC;
   int typeA, typeB, typeC;
 
