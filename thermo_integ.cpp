@@ -64,8 +64,10 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     parameter_list = 0;
     mode = 0;
 
-    delta_p = 0.0;
-    delta_q = 0.0;
+    p_initial = 0.0;
+    p_final = 0.0;
+    q_initial = 0.0;
+    q_final = 0.0;
 
     lambda = utils::numeric(FLERR,arg[3],false,lmp);
     dlambda = utils::numeric(FLERR,arg[4],false,lmp);
@@ -96,21 +98,24 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
         {
             parameter_list |= PAIR;
             pstyle = utils::strdup(arg[iarg + 1]);
-            delta_p = utils::numeric(FLERR, arg[iarg + 2], false, lmp);
-            iarg += 3;
+            p_initial = utils::numeric(FLERR, arg[iarg + 2], false, lmp);
+            p_final = utils::numeric(FLERR, arg[iarg + 3], false, lmp);
+            iarg += 4;
         }
         else if (strcmp(arg[iarg], "charge") == 0)
         {
             parameter_list |= CHARGE;
-            delta_q = utils::numeric(FLERR, arg[iarg + 1], false, lmp);
-            typeC = utils::numeric(FLERR, arg[iarg + 2], false, lmp);
+            q_initial = utils::numeric(FLERR, arg[iarg + 1], false, lmp);
+            q_final = utils::numeric(FLERR, arg[iarg + 2], false, lmp);
+            typeC = utils::numeric(FLERR, arg[iarg + 3], false, lmp);
             if (typeC > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeC);
-            iarg += 3;
+            iarg += 4;
         }
         else error->all(FLERR, "Unknown compute TI keyword {}", arg[iarg]);
     }
 
-
+    delta_p = (p_final - p_initial) * dlambda;
+    delta_q = (q_final - p_initial) * dlambda;
 
     // allocate space for charge, force, energy, virial arrays
 
@@ -383,18 +388,16 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
            error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
         }
 
-        for (int i = 0; i < ntypes + 1; i++)
+        double *epsii = new double[ntypes+1];
+        for (int i = 1; i < ntypes + 1; i++) {
+            epsii[i] = epsilon_init[i][i];
+            if (i == typeA) epsii[i] += _delta_p;
+        }
+        for (int i = 0; i < ntypes + 1 ; i++)
             for (int j = i; j < ntypes + 1; j++)
-            {
-                if (i == typeA || j == typeA)
-                {
-                    epsilon[i][j] = epsilon_init[i][j] + _delta_p;
-                }
-                if (mode & DUAL)
-                    if (i == typeB || j == typeB)
-                        epsilon[i][j] = epsilon_init[i][j] - _delta_p;
-            }
-       
+               epsilon[i][j] = sqrt(epsii[i]*epsii[j]);
+        
+        delete [] epsii;
         pair->reinit();
     }
    
