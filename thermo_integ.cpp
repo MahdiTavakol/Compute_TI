@@ -49,6 +49,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     peflag = 1;
     peatomflag = 1;
     peratom_flag = 1;
+    comm_reverse = 1;
     
     
     scalar_flag = 0;
@@ -131,6 +132,7 @@ ComputeThermoInteg::~ComputeThermoInteg()
 {
     deallocate_storage();
     memory->destroy(epsilon_init);
+    memory->destroy(energy_peratom);
     delete[] pparam;
     delete[] pstyle;
     delete[] vector;
@@ -159,6 +161,10 @@ void ComputeThermoInteg::setup()
     for (int i = 0; i < ntypes + 1; i++)
         for (int j = i; j < ntypes + 1; j++)
              epsilon_init[i][j] = epsilon[i][j];
+        
+        
+    int nmax = atom->nmax;     
+    memory->create(energy_peratom,nmax,"compute_TI:energy_peratom");
              
 }
 
@@ -228,6 +234,8 @@ void ComputeThermoInteg::compute_vector()
     vector[0] = 0.0;
     vector[1] = 0.0;
     vector[2] = 0.0;
+    vector[3] = 0.0;
+    vector[4] = 0.0;
 
     double nulldouble  = 0.0;
     
@@ -294,9 +302,9 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     backup_restore_qfev<-1>();      // restore charge, force, energy, virial array values
     restore_epsilon(); // restore epsilon values
 
-    du_dl = (uB - uA) / (2*dlambda*static_cast<double>(atom->natoms)); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
-    vector[3] = uB;
-    vector[4] = uA;
+    du_dl = (uB - uA) / (2*dlambda); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
+    vector[3] = uA;
+    vector[4] = uB;
     return du_dl;
 }
 
@@ -399,6 +407,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
                 q[i] += _delta_qC;
         }
 
+        //compute_q_total();
     }
 }
 
@@ -478,70 +487,6 @@ void ComputeThermoInteg::backup_restore_qfev()
     int nall = atom->nlocal + atom->nghost;
     int natom = atom->nlocal;
     if (force->newton || force->kspace->tip4pflag) natom += atom->nghost;
-/* ----------------------------------------------------------------------
-   LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
-   https://www.lammps.org/, Sandia National Laboratories
-   LAMMPS development team: developers@lammps.org
-
-   Copyright (2003) Sandia Corporation.  Under the terms of Contract
-   DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
-   certain rights in this software.  This software is distributed under
-   the GNU General Public License.
-
-   See the README file in the top-level LAMMPS directory.
-------------------------------------------------------------------------- */
-/* ----  Compute Thermo_Integ written by Mahdi Tavakol (Oxford) mahditavakol90@gmail.com ----
-   ----  For some reasons that I do not know why it does not work with the intel package ---- */
-
-#include "compute_thermo_integ.h"
-
-#include "atom.h"
-#include "comm.h"
-#include "domain.h"
-#include "error.h"
-#include "fix.h"
-#include "force.h"
-#include "input.h"
-#include "kspace.h"
-#include "memory.h"
-#include "modify.h"
-#include "pair.h"
-#include "pair_hybrid.h"
-#include "timer.h"
-#include "update.h"
-#include "variable.h"
-
-using namespace LAMMPS_NS;
-
-enum { SINGLE = 1 << 0, DUAL = 1 << 1 };
-enum {
-    PAIR = 1 << 0,
-    CHARGE = 1 << 1,
-};
-
-/* ---------------------------------------------------------------------- */
-
-ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Compute(lmp, narg, arg)
-{
-    if (narg < 10) error->all(FLERR, "Illegal number of arguments in compute ti");
-
-
-    peflag = 1;
-    peatomflag = 1;
-    peratom_flag = 1;
-    
-    
-    scalar_flag = 0;
-    vector_flag = 1;
-    size_vector = 3;
-    peratom_flag = 1; // I need to have per atom energies tallied. 
-    
-    extvector = 0;
-
-    vector = new double[3];
-
-    parameter_list = 0;
-    mode = 0;
 
     double** f = atom->f;
     forward_reverse_copy<direction>(f_orig, f, natom, 3);
@@ -596,7 +541,7 @@ void ComputeThermoInteg::restore_epsilon()
    ---------------------------------------------------------------------- */
 
 void ComputeThermoInteg::update_lmp() {
-    int eflag = 1; //ENERGY_ATOM;
+    int eflag = 1
     int vflag = 0;
     timer->stamp();
     if (force->pair && force->pair->compute_flag) {
@@ -696,7 +641,7 @@ double ComputeThermoInteg::compute_epair()
     MPI_Allreduce(&energy_local, &energy, 1, MPI_DOUBLE, MPI_SUM, world);
     
     if (force->pair && force->kspace) energy += force->kspace->energy;
-    //energy /= static_cast<double> (natoms); // To convert to kcal/mol the total energy must be devided by the number of atoms
+    energy /= static_cast<double> (natoms); // To convert to kcal/mol the total energy must be devided by the number of atoms
     return energy;
 }
 
@@ -710,7 +655,7 @@ double ComputeThermoInteg::compute_epair_atom()
    //if (update->eflag_atom != invoked_scalar)
    //   error->all(FLERR,"Per-atom energy was not tallied on needed timestep");
       
-   
+   int nlocal = atom->nlocal;
    int npair = atom->nlocal;
    int ntotal = atom->nlocal;
    int nkspace = atom->nlocal;
@@ -719,43 +664,86 @@ double ComputeThermoInteg::compute_epair_atom()
    if (force->kspace && force->kspace->tip4pflag) nkspace += atom->nghost;
 
    int *mask = atom->mask;
-
    
+   for (int i = 0; i < ntotal; i++) energy_peratom[i] = 0.0;
    
-   double energy_local = 0.0;
-   double energy = 0.0;
-   double natom_local = 0; // I know it is an atom number but at the end I have to convert it to a double! And I do not want to use two MPI_Allreduce commands.
-   double natom = 0;
-
    if (force->pair && force->pair->compute_flag)
    {
       double *eatom = force->pair->eatom;
       for (int i = 0; i < npair; i++)
-         if (mask[i] & groupbit)
-         {
-            natom_local += 1.0;
-            energy_local += eatom[i];
-         }
-   }
+          energy_peratom[i] += eatom[i];
+   } 
    if (force->kspace && force->kspace->compute_flag)
    {
       double *eatom = force->kspace->eatom;
       for (int i = 0; i < nkspace; i++)
-         if (mask[i] & groupbit)
-            energy_local += eatom[i];
+          energy_peratom[i] += eatom[i];
    }
-
+   
+   if (force->newton || (force->kspace && force->kspace->tip4pflag)) comm->reverse_comm(this);
+   
+   
+   double energy_local = 0.0;
+   double natom_local = 0.0;
+   
+   for (int i = 0; i < nlocal; i++)
+      if (mask[i] & groupbit)
+      {
+          natom_local += 1.0;
+          energy_local += energy_peratom[i];
+      }
+    
    double *local = new double[2];
    double *total = new double[2];
+   
+   
    local[0] = energy_local;
    local[1] = natom_local;
+   
    MPI_Allreduce(local,total,2,MPI_DOUBLE,MPI_SUM,world);
-   energy = total[0];
-   natom = total[1];
-   energy /= natom;
+   double energy = total[0];
+   double natom = total[1];
+   energy = energy / natom;
+   
    
    delete [] local;
    delete [] total;
 
    return energy;
+}
+
+/* ----------------------------------------------------------
+   Ghost atom contributions
+   from src/compute_pe_atom.cpp
+   ---------------------------------------------------------- */
+   
+int ComputeThermoInteg::pack_reverse_comm(int n, int first, double *buf)
+{
+   int i, m, last;
+   
+   m = 0; 
+   last = first + n;
+   for (i = first; i < last; i++) buf[m++] = energy_peratom[i];
+   return m;
+}
+
+/* ---------------------------------------------------------- */ 
+
+void ComputeThermoInteg::unpack_reverse_comm(int n, int *list, double * buf)
+{
+   int i, j , m;
+   
+   m = 0;
+   for (i = 0; i < n; i++) {
+      j = list[i];
+      energy_peratom[j] += buf[m++];
+   }
+}
+
+/* ---------------------------------------------------------- */
+
+double ComputeThermoInteg::memory_usage()
+{
+  double bytes = (double) nmax * sizeof(double);
+  return bytes;
 }
