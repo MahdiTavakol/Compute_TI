@@ -393,7 +393,7 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
        
         for (int i = 0; i < ntypes + 1 ; i++)
             for (int j = i; j < ntypes + 1; j++)
-               if (i == typeA || j = typeA)
+               if (i == typeA || j == typeA)
                    epsilon[i][j] = sqrt(epsilon[i][i]*epsilon[j][j]);
         
         pair->reinit();
@@ -751,12 +751,4 @@ void ComputeThermoInteg::unpack_reverse_comm(int n, int *list, double * buf)
       j = list[i];
       energy_peratom[j] += buf[m++];
    }
-}
-
-/* ---------------------------------------------------------- */
-
-double ComputeThermoInteg::memory_usage()
-{
-  double bytes = (double) nmax * sizeof(double);
-  return bytes;
 }
