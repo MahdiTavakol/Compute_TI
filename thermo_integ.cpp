@@ -55,12 +55,12 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     
     scalar_flag = 0;
     vector_flag = 1;
-    size_vector = 5;
+    size_vector = 6;
     peratom_flag = 1; // I need to have per atom energies tallied. 
     
     extvector = 0;
 
-    vector = new double[5];
+    vector = new double[size_vector];
 
     parameter_list = 0;
     mode = 0;
@@ -117,47 +117,36 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
             parameter_list |= PAIR;
             pstyle = utils::strdup(arg[iarg + 1]);
             iarg += 2;
-            p_initials = new double[ntypeAs];
-            p_finals = new double[ntypeAs];
-            for (int i = 0; i < ntypeAs; i++)
+            lA_ps = new double[ntypeAs];  //NEGATIVE
+            lB_ps = new double[ntypeAs];  //POSITIVE
+            for (int k = 0; k < ntypeAs; k++)
             {
-               p_initials[iarg] = utils::numeric(FLERR, arg[iarg], false, lmp);
-               p_finals[iarg] = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               double p_initial, p_final;
+               p_initial = utils::numeric(FLERR, arg[iarg], false, lmp);
+               p_finals = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               lA_ps[k] = -(p_final - p_initial) * dlambda;
+               lB_ps[k] = (p_final - p_initial) * dlambda;
                iarg+=2;
-            }
-            
-            lA_ps = new double[ntypeAs];
-            lB_ps = new double[ntypeAs];
-            for (int i = 0; i < ntypeAs; i++)
-            {
-                lA_ps[i] = -(p_finals[i] - p_initials[i]) * dlambda;
-                lB_ps[i] = (p_finals[i] - p_initials[i]) * dlambda;
             }
         }
         else if (strcmp(arg[iarg], "charge") == 0)
         {
             parameter_list |= CHARGE;
             iarg++;
-            q_initials = new double[ntypeAs];
-            q_finals = new double[ntypeAs];
-            for (int i = 0; i < ntypeAs; i++)
+            lA_qs = new double[ntypeAs];  //NEGATIVE
+            lB_qs = new double[ntypeAs];  //POSITIVE
+            for (int k = 0; k < ntypeAs; k++)
             {
-               q_initials[iarg] = utils::numeric(FLERR, arg[iarg], false, lmp);
-               q_finals[iarg] = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               double q_initial, q_final;
+               q_initial = utils::numeric(FLERR, arg[iarg], false, lmp);
+               q_final = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               lA_qs[k] = -(q_final - q_initial) * dlambda;
+               lB_qs[k] = (q_final - q_initial) * dlambda;
                iarg+=2;
             }
             typeC = utils::numeric(FLERR, arg[iarg], false, lmp);
             if (typeC > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeC);
             iarg++;
-
-            lA_qs = new double[ntypeAs];
-            lB_qs = new double[ntypeAs];
-            for (int i = 0; i < ntypeAs; i++)
-            {
-                lA_qs[i] = -(q_finals[i] - q_initials[i]) * dlambda;
-                lB_qs[i] = (q_finals[i] - q_initials[i]) * dlambda;
-            }
-           
         }
         else error->all(FLERR, "Unknown compute TI keyword {}", arg[iarg]);
     }
@@ -189,15 +178,11 @@ ComputeThermoInteg::~ComputeThermoInteg()
     if (mode & DUAL)  delete[] typeBs;
     if (parameter_list & PAIR)
     {
-       delete[] p_initials;
-       delete[] p_finals;
        delete[] lA_ps;
        delete[] lB_ps;
     }
     if (parameter_list & CHARGE)
     {
-       delete[] q_initials;
-       delete[] q_finals;
        delete[] lA_qs;
        delete[] lB_qs;     
     }
@@ -309,6 +294,7 @@ void ComputeThermoInteg::compute_vector()
     vector[2] = 0.0;
     vector[3] = 0.0;
     vector[4] = 0.0;
+    vector[5] = 0.0;
 
     
     
@@ -345,7 +331,7 @@ void ComputeThermoInteg::compute_vector()
 template <int parameter, int mode>
 double ComputeThermoInteg::compute_du()
 {
-    double uA, uB, du_dl;
+    double uA, uB, uC, du_dl;
 
     
     /* check if there is enough allocated memory */
@@ -378,9 +364,15 @@ double ComputeThermoInteg::compute_du()
 
     du_dl = (uB - uA) / (2*dlambda); //u(x+dx)-u(x-dx) /((x+dx)-(x-dx))
 
+    if (groupbit == 1)
+       uC = compute_epair();
+    else
+       uC = compute_epair_atom();
+
     // Just for debugging purposes
     vector[3] = uA;
     vector[4] = uB;
+    vector[5] = uC;
     return du_dl;
 }
 
