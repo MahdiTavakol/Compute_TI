@@ -38,12 +38,13 @@ enum {
     PAIR = 1 << 0,
     CHARGE = 1 << 1,
 };
+enum {POSITIVE,NEGATIVE};
 
 /* ---------------------------------------------------------------------- */
 
 ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Compute(lmp, narg, arg)
 {
-    if (narg < 10) error->all(FLERR, "Illegal number of arguments in compute ti");
+    if (narg < 11) error->all(FLERR, "Illegal number of arguments in compute ti");
 
 
     peflag = 1;
@@ -64,32 +65,49 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
     parameter_list = 0;
     mode = 0;
 
-    p_initial = 0.0;
-    p_final = 0.0;
-    q_initial = 0.0;
-    q_final = 0.0;
 
     lambda = utils::numeric(FLERR,arg[3],false,lmp);
     dlambda = utils::numeric(FLERR,arg[4],false,lmp);
 
-    int iarg;
-    if (strcmp(arg[5], "dual") == 0)
+    int iarg = 5;
+    if (strcmp(arg[iarg], "dual") == 0)
     {
+        error->all(FLERR,"Dual topology is not yet supported");
         mode |= DUAL;
-        typeA = utils::numeric(FLERR, arg[6], false, lmp);
-        if (typeA > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeA);
-        typeB = utils::numeric(FLERR, arg[7], false, lmp);
-        if (typeB > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeB);
-        iarg = 8;
+        ntypeAs = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+        iarg += 2;
+        typeAs = new int[ntypeAs];
+        for (int i = 0; i < ntypeAs; i++)
+        {
+           typeAs[i] = utils::numeric(FLERR,arg[iarg],false,lmp);
+           if (typeAs[i] > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeAs[i]);
+           iarg++;
+        }
+        ntypeBs = utils::numeric(FLERR, arg[iarg], false, lmp);
+        iarg++;
+        typeBs = new int[ntypeBs];
+        for (int i = 0; i < ntypeBs; i++)
+        {
+           typeBs[i] = utils::numeric(FLERR,arg[iarg],false,lmp);
+           if (typeBs[i] > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeBs[i]);
+           iarg++;
+        }
     }
-    else if (strcmp(arg[5], "single") == 0)
+    else if (strcmp(arg[iarg], "single") == 0)
     {
         mode |= SINGLE;
-        typeA = utils::numeric(FLERR, arg[6], false, lmp);
-        if (typeA > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeA);
-        iarg = 7;
+        ntypeAs = utils::numeric(FLERR,arg[iarg+1],false,lmp);
+        ntypeBs = 0;
+        iarg += 2;
+        typeAs = new int[ntypeAs];
+        for (int i = 0; i < ntypeAs; i++)
+        {
+           typeAs[i] = utils::numeric(FLERR,arg[iarg],false,lmp);
+           if (typeAs[i] > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeAs[i]);
+           iarg++;
+        }
     }
-    else error->all(FLERR, "Unknown compute TI style {}", arg[5]);
+    else error->all(FLERR, "Unknown compute TI style {}", arg[iarg]);
 
 
     while (iarg < narg)
@@ -98,24 +116,52 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
         {
             parameter_list |= PAIR;
             pstyle = utils::strdup(arg[iarg + 1]);
-            p_initial = utils::numeric(FLERR, arg[iarg + 2], false, lmp);
-            p_final = utils::numeric(FLERR, arg[iarg + 3], false, lmp);
-            iarg += 4;
+            iarg += 2;
+            p_initials = new double[ntypeAs];
+            p_finals = new double[ntypeAs];
+            for (int i = 0; i < ntypeAs; i++)
+            {
+               p_initials[iarg] = utils::numeric(FLERR, arg[iarg], false, lmp);
+               p_finals[iarg] = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               iarg+=2;
+            }
+            
+            lA_ps = new double[ntypeAs];
+            lB_ps = new double[ntypeAs];
+            for (int i = 0; i < ntypeAs; i++)
+            {
+                lA_ps[i] = -(p_finals[i] - p_initials[i]) * dlambda;
+                lB_ps[i] = (p_finals[i] - p_initials[i]) * dlambda;
+            }
         }
         else if (strcmp(arg[iarg], "charge") == 0)
         {
             parameter_list |= CHARGE;
-            q_initial = utils::numeric(FLERR, arg[iarg + 1], false, lmp);
-            q_final = utils::numeric(FLERR, arg[iarg + 2], false, lmp);
-            typeC = utils::numeric(FLERR, arg[iarg + 3], false, lmp);
+            iarg++;
+            q_initials = new double[ntypeAs];
+            q_finals = new double[ntypeAs];
+            for (int i = 0; i < ntypeAs; i++)
+            {
+               q_initials[iarg] = utils::numeric(FLERR, arg[iarg], false, lmp);
+               q_finals[iarg] = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               iarg+=2;
+            }
+            typeC = utils::numeric(FLERR, arg[iarg], false, lmp);
             if (typeC > atom->ntypes) error->all(FLERR, "Illegal compute TI atom type {}", typeC);
-            iarg += 4;
+            iarg++;
+
+            lA_qs = new double[ntypeAs];
+            lB_qs = new double[ntypeAs];
+            for (int i = 0; i < ntypeAs; i++)
+            {
+                lA_qs[i] = -(q_finals[i] - q_initials[i]) * dlambda;
+                lB_qs[i] = (q_finals[i] - q_initials[i]) * dlambda;
+            }
+           
         }
         else error->all(FLERR, "Unknown compute TI keyword {}", arg[iarg]);
     }
 
-    delta_p = (p_final - p_initial) * dlambda;
-    delta_q = (q_final - q_initial) * dlambda;
 
     // allocate space for charge, force, energy, virial arrays
 
@@ -138,6 +184,24 @@ ComputeThermoInteg::~ComputeThermoInteg()
     deallocate_storage();
     memory->destroy(epsilon_init);
     memory->destroy(energy_peratom);
+
+    delete[] typeAs;
+    if (mode & DUAL)  delete[] typeBs;
+    if (parameter_list & PAIR)
+    {
+       delete[] p_initials;
+       delete[] p_finals;
+       delete[] lA_ps;
+       delete[] lB_ps;
+    }
+    if (parameter_list & CHARGE)
+    {
+       delete[] q_initials;
+       delete[] q_finals;
+       delete[] lA_qs;
+       delete[] lB_qs;     
+    }
+
     delete[] pparam;
     delete[] pstyle;
     delete[] vector;
@@ -246,47 +310,43 @@ void ComputeThermoInteg::compute_vector()
     vector[3] = 0.0;
     vector[4] = 0.0;
 
-    double nulldouble  = 0.0;
     
     
     if (natoms != atom->natoms)
     {  
        natoms = atom->natoms;
-       set_delta_qC(delta_q,delta_qC);
+       set_delta_qC();
     }
    
     if (parameter_list & PAIR)
     {
         /* It should be compute_du<PAIR,mode>(delta_p); But that does not work for some reasons!*/
         if (mode & SINGLE)
-            vector[0] = compute_du<PAIR, SINGLE>(delta_p,nulldouble);
+            vector[0] = compute_du<PAIR, SINGLE>();
         if (mode & DUAL)
-            vector[0] = compute_du<PAIR, DUAL>(delta_p,nulldouble);
+            vector[0] = compute_du<PAIR, DUAL>();
     }
     if (parameter_list & CHARGE)
     {
         if (mode & SINGLE)
-            vector[1] = compute_du<CHARGE, SINGLE>(nulldouble,delta_q);
+            vector[1] = compute_du<CHARGE, SINGLE>();
         if (mode & DUAL)
-            vector[1] = compute_du<CHARGE, DUAL>(nulldouble,delta_q);
+            vector[1] = compute_du<CHARGE, DUAL>();
     }
 
     if (mode & SINGLE)
-        vector[2] = compute_du<PAIR|CHARGE,SINGLE>(delta_p,delta_q);
+        vector[2] = compute_du<PAIR|CHARGE,SINGLE>();
     if (mode & DUAL)
-        vector[2] = compute_du<PAIR|CHARGE,DUAL>(delta_p,delta_q);
+        vector[2] = compute_du<PAIR|CHARGE,DUAL>();
 }
 
 /* ---------------------------------------------------------------------- */
 
 template <int parameter, int mode>
-double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
+double ComputeThermoInteg::compute_du()
 {
     double uA, uB, du_dl;
-    double lA_p = - _delta_p;
-    double lA_q = - _delta_q;
-    double lB_p = _delta_p;
-    double lB_q = _delta_q;
+
     
     /* check if there is enough allocated memory */
     if (nmax < atom->nmax)
@@ -297,7 +357,7 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
     }
     backup_restore_qfev<1>();      // backup charge, force, energy, virial array values
     
-    modify_epsilon_q<parameter, mode>(lA_p,lA_q);      //
+    modify_epsilon_q<parameter, mode, NEGATIVE>();      //
     update_lmp(); // update the lammps force and virial values
     if (groupbit == 1)
         uA = compute_epair(); // I guess it should be more efficient for the group all
@@ -305,7 +365,7 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
         uA = compute_epair_atom();
     
     
-    modify_epsilon_q<parameter, mode>(lB_p,lB_q);
+    modify_epsilon_q<parameter, mode, POSITIVE>();
     update_lmp(); // update the lammps force and virial values
 
     if (groupbit == 1)
@@ -329,8 +389,8 @@ double ComputeThermoInteg::compute_du(double& _delta_p, double& _delta_q)
 
    -------------------------------------------------------------- */
 
-template <int parameter, int mode>
-void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
+template <int parameter, int mode, int direction>
+void ComputeThermoInteg::modify_epsilon_q()
 {
     int nlocal = atom->nlocal;
     int* mask = atom->mask;
@@ -347,79 +407,66 @@ void ComputeThermoInteg::modify_epsilon_q(double& _delta_p, double& _delta_q)
         int bad_i = 0;
         int bad_j = 0;
         bool modified_delta = false;
-        if (delta_p < 0)
+
+        for (int k = 0; k < ntypeAs; k++)
         {
-            for (int i = typeA; i < ntypes + 1; i++)
-                if (epsilon_init[typeA][i] < - _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_j = i;
-                    modified_delta = true;
-                    _delta_p = -epsilon_init[typeA][i];
-                }
-            for (int i = 1; i < typeA; i++)
-                if (epsilon_init[i][typeA] < - _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_i = i;
-                    modified_delta = true;
-                    _delta_p = -epsilon_init[i][typeA];
-                }
-        }
-        if (delta_p > 0 && mode & DUAL)
-        {
-            for (int i = typeB; i < ntypes + 1; i++)
-                if (epsilon_init[typeB][i] < _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_j = i;
-                    modified_delta = true;
-                    _delta_p = epsilon_init[typeA][i];
-                }
-            for (int i = 1; i < typeB; i++)
-                if (epsilon_init[i][typeB] < _delta_p)
-                {
-                    if (epsilon[i][i] == 0) continue;
-                    bad_i = i;
-                    modified_delta = true;
-                    _delta_p = epsilon_init[i][typeA];
-                }
-        }
-        if (modified_delta) 
-        {
-           error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", _delta_p,bad_i,bad_j);
+           int typeA = typeAs[k];
+           double& delta_p = (direction == NEGATIVE) ? lA_ps[k] : lB_ps[k];
+           for (int j = 1; j < typeA; j++)
+               if (epsilon_init[j][typeA] < -delta_p)
+               {
+                     if (epsilon[j][j] == 0) continue;
+                     bad_i = typeA;
+                     bad_j = j;
+                     modified_delta = true;
+                     delta_p = -epsilon_init[j][typeA];
+               }
+           for (int j = typeA; j < ntypes + 1; j++)
+               if (epsilon_init[typeA][j] < -delta_p)
+               {
+                     if (epsilon[j][j] == 0) continue;
+                     bad_i = typeA;
+                     bad_j = j;
+                     modified_delta = true;
+                     delta_p = -epsilon_init[typeA][j];
+               }
+           if (modified_delta) 
+           {
+               error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p, bad_i,bad_j);
+           }
+           epsilon[typeA][typeA] = epsilon_init[typeA][typeA] + delta_p;
         }
 
-        // Just epsilon for typeA and interactions with typeA is changed.
-        epsilon[typeA][typeA] = epsilon_init[typeA][typeA] + _delta_p;
-       
-        for (int i = 0; i < ntypes + 1 ; i++)
-            for (int j = i; j < ntypes + 1; j++)
-               if (i == typeA || j == typeA)
-                   epsilon[i][j] = sqrt(epsilon[i][i]*epsilon[j][j]);
+        for (int k = 0; k < ntypeAs; k++)
+           for (int i = 0; i < ntypes + 1 ; i++)
+               for (int j = i; j < ntypes + 1; j++)
+                   if (i == typeAs[k] || j == typeAs[k])
+                       epsilon[i][j] = sqrt(epsilon[i][i]*epsilon[j][j]);
         
         pair->reinit();
     }
    
     if (parameter & CHARGE)
     {   
-        // Since this part involves a MPI_Allreduce can have a large overhead --> should be moved to outside this function so that it could be called everytime the number of atoms change.
-        if (_delta_q >= 0) _delta_qC = delta_qC;
-        else _delta_qC = - delta_qC;
+        _delta_qC = (direction == NEGATIVE) ? delta_qC : -delta_qC;
 
-         
-        for (int i = 0; i < nlocal; i++)
+        for (int k = 0; k < ntypeAs; k++)
         {
-            if (type[i] == typeA)
-                q[i] += _delta_q;
-            if (mode & DUAL)
-                if (type[i] == typeB)
-                    q[i] -= _delta_q;
-            if (type[i] == typeC)
-                q[i] += _delta_qC;
+            int typeA = typeAs[k];
+            double delta_q = (direction == NEGATIVE) ? lA_qs[k] : lB_qs[k];
+            for (int i = 0; i < nlocal; i++)
+            {
+                if (type[i] == typeA)
+                   q[i] += delta_q;
+                if (mode & DUAL)
+                   if (type[i] == typeB)
+                      q[i] -= delta_q;
+                if (type[i] == typeC)
+                   q[i] += _delta_qC;
+            }
         }
 
-        //compute_q_total();
+        compute_q_total();
     }
 }
 
@@ -584,11 +631,10 @@ void ComputeThermoInteg::update_lmp() {
    for the computational efficiency purposes. 
    --------------------------------------------------------------------- */
 
-void ComputeThermoInteg::set_delta_qC(const double & _delta_q, double & _delta_qC)
+void ComputeThermoInteg::set_delta_qC()
 {               
-   int* selected_types        = new int[3] {typeA, (mode & SINGLE) ? 0: typeB, typeC};
-   int* selected_counts_local = new int[3] {}; // Inititalize all the elements with the default constructor which is 0.0 here
-   int* selected_counts       = new int[3] {}; // Inititalize all the elements with the default constructor which is 0.0 here
+   int* selected_counts_local = new int[ntypeAs + ntypeBs + 1] {}; // Inititalize all the elements with the default constructor which is 0.0 here
+   int* selected_counts       = new int[ntypeAs + ntypeBs + 1] {}; // Inititalize all the elements with the default constructor which is 0.0 here
    
    int nlocal = atom->nlocal;
    double* q = atom->q;
@@ -596,22 +642,32 @@ void ComputeThermoInteg::set_delta_qC(const double & _delta_q, double & _delta_q
       
       
    for (int i = 0; i < nlocal; i++)
-      for (int j = 0; j < 3; j++)
-          if (type[i] == selected_types[j])
-              selected_counts_local[j]++;
+   {
+      if (type[i] == typeC)
+          selected_counts_local[ntypesA + ntypesB]++;
+      for (int k = 0; k < ntypeAs; k++)
+          if (type[i] == typeAs[k])
+              selected_counts_local[k]++;
+      for (int k = 0; k < ntypeBs; k++)
+          if (type[i] == typeBs[k])
+              selected_counts_local[ntypeAs+k]++;
+   }
 
-   MPI_Allreduce(selected_counts_local, selected_counts, 3, MPI_INT, MPI_SUM, world);
+   MPI_Allreduce(selected_counts_local, selected_counts, ntypeAs + ntypeBs + 1, MPI_INT, MPI_SUM, world);
 
+   for (int k = 0; k < ntypeAs; k++)
+      if (selected_counts[k] == 0) error->warning(FLERR, "Total number of atoms of {} in compute ti is zero",typeAs[k]);
+   for (int k = 0; k < ntypeBs; k++)
+      if (selected_counts[ntypeAs + k] == 0) error->warning(FLERR, "Total number of atoms of {} in compute ti is zero",typeBs[k]);
+   if (selected_counts[ntypeAs + ntypeBs] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
 
-
-   if (selected_counts[0] == 0) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeA);
-   if (selected_counts[1] == 0 && (mode & DUAL)) error->warning(FLERR, "Total number of atoms of type {} in compute ti is zero", typeB);
-   if (selected_counts[2] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
+   delta_qC = 0.0;
+   for (int k = 0; k < ntypeAs; k++)
+      delta_qC -= lA_qs[k] * static_cast<double>(selected_counts[k]);
+   for (int k = 0; k < ntypeBs; k++)
+      delta_qC += lA_qs[k] * static_cast<double>(selected_counts[ntypeAs+k]);
+   delta_qC /= static_cast<double>(selected_counts[ntypeAs+typeBs]);
        
-   _delta_qC = -(selected_counts[0] * _delta_q + selected_counts[1] * (- _delta_q)) / selected_counts[2];
-   
-       
-   delete [] selected_types;
    delete [] selected_counts_local;
    delete [] selected_counts;
 }
