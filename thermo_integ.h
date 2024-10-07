@@ -50,7 +50,6 @@ class ComputeThermoInteg : public Compute {
   double * p_initials, * p_finals;
   double * q_initials, * q_finals;
   double * delta_ps, * delta_qs;
-
   double * lA_ps, * lB_ps;
   double * lA_qs, * lB_qs;
 
