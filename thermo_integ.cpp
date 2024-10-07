@@ -442,21 +442,20 @@ void ComputeThermoInteg::modify_epsilon_q()
     {   
         _delta_qC = (direction == NEGATIVE) ? delta_qC : -delta_qC;
 
-        for (int k = 0; k < ntypeAs; k++)
+        double delta_q = (direction == NEGATIVE) ? lA_qs[k] : lB_qs[k];
+        for (int i = 0; i < nlocal; i++)
         {
-            int typeA = typeAs[k];
-            double delta_q = (direction == NEGATIVE) ? lA_qs[k] : lB_qs[k];
-            for (int i = 0; i < nlocal; i++)
-            {
-                if (type[i] == typeA)
-                   q[i] += delta_q;
-                if (mode & DUAL)
-                   if (type[i] == typeB)
-                      q[i] -= delta_q;
-                if (type[i] == typeC)
+            for (int k = 0; k < ntypeAs; k++)
+                if (type[i] == typeAs[k])
+                    q[i] += delta_q;
+            if (mode & DUAL)
+                for (int k = 0; k < ntypeBs; k++)
+                    if (type[i] == typeBs[k])
+                        q[i] -= delta_q;
+            if (type[i] == typeC)
                    q[i] += _delta_qC;
-            }
         }
+
 
         compute_q_total();
     }
@@ -625,8 +624,8 @@ void ComputeThermoInteg::update_lmp() {
 
 void ComputeThermoInteg::set_delta_qC()
 {               
-   int* selected_counts_local = new int[ntypeAs + ntypeBs + 1] {}; // Inititalize all the elements with the default constructor which is 0.0 here
-   int* selected_counts       = new int[ntypeAs + ntypeBs + 1] {}; // Inititalize all the elements with the default constructor which is 0.0 here
+   int* selected_counts_local = new int[ntypeAs + ntypeBs + 1] {}; // Inititalize all the elements with the default constructor which is 0 here
+   int* selected_counts       = new int[ntypeAs + ntypeBs + 1] {}; // Inititalize all the elements with the default constructor which is 0 here
    
    int nlocal = atom->nlocal;
    double* q = atom->q;
@@ -650,7 +649,7 @@ void ComputeThermoInteg::set_delta_qC()
    for (int k = 0; k < ntypeAs; k++)
       if (selected_counts[k] == 0) error->warning(FLERR, "Total number of atoms of {} in compute ti is zero",typeAs[k]);
    for (int k = 0; k < ntypeBs; k++)
-      if (selected_counts[ntypeAs + k] == 0) error->warning(FLERR, "Total number of atoms of {} in compute ti is zero",typeBs[k]);
+      if (selected_counts[ntypeAs + k] == 0  && (mode & DUAL) ) error->warning(FLERR, "Total number of atoms of {} in compute ti is zero",typeBs[k]);
    if (selected_counts[ntypeAs + ntypeBs] == 0) error->all(FLERR, "Total number of atoms of type {} in compute ti is zero", typeC);
 
    delta_qC = 0.0;
