@@ -45,10 +45,14 @@ class ComputeThermoInteg : public Compute {
 
   double lambda, dlambda;
 
-  double p_initial, p_final, q_initial, q_final;
+  int ntypeAs, ntypeBs;
+  int * typeAs, * typeBs;
+  double * p_initials, * p_finals;
+  double * q_initials, * q_finals;
+  double * delta_ps, * delta_qs;
 
-  double delta_p, delta_q, delta_qC;
-  int typeA, typeB, typeC;
+  double  delta_qC;
+  int typeC;
 
   // Pair style parameters
   char * pstyle, * pparam;
