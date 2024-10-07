@@ -101,12 +101,12 @@ class ComputeThermoInteg : public Compute {
 
 
   template <int parameter, int mode>  
-  double compute_du(double &delta_p, double &delta_q);
-  template <int parameter, int mode>   
-  void modify_epsilon_q(double& delta_p, double& delta_q);
+  double compute_du();
+  template <int parameter, int mode, int direction>   
+  void modify_epsilon_q();
   void restore_epsilon();
   void update_lmp();
-  void set_delta_qC(const double & _delta_q, double & _delta_qC);
+  void set_delta_qC();
   void compute_q_total();
   double compute_epair();
   double compute_epair_atom();
