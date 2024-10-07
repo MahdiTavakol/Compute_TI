@@ -47,8 +47,6 @@ class ComputeThermoInteg : public Compute {
 
   int ntypeAs, ntypeBs;
   int * typeAs, * typeBs;
-  double * p_initials, * p_finals;
-  double * q_initials, * q_finals;
   double * lA_ps, * lB_ps;
   double * lA_qs, * lB_qs;
 
