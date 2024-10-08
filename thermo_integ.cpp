@@ -123,7 +123,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
             {
                double p_initial, p_final;
                p_initial = utils::numeric(FLERR, arg[iarg], false, lmp);
-               p_finals = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               p_final = utils::numeric(FLERR, arg[iarg+1], false, lmp);
                lA_ps[k] = -(p_final - p_initial) * dlambda;
                lB_ps[k] = (p_final - p_initial) * dlambda;
                iarg+=2;
@@ -442,16 +442,20 @@ void ComputeThermoInteg::modify_epsilon_q()
     {   
         _delta_qC = (direction == NEGATIVE) ? delta_qC : -delta_qC;
 
-        double delta_q = (direction == NEGATIVE) ? lA_qs[k] : lB_qs[k];
+        
         for (int i = 0; i < nlocal; i++)
         {
             for (int k = 0; k < ntypeAs; k++)
+            {
+                double delta_q = (direction == NEGATIVE) ? lA_qs[k] : lB_qs[k];
                 if (type[i] == typeAs[k])
                     q[i] += delta_q;
+            }
             if (mode & DUAL)
                 for (int k = 0; k < ntypeBs; k++)
-                    if (type[i] == typeBs[k])
-                        q[i] -= delta_q;
+                {
+                   // Needs to be implemented!!!
+                }
             if (type[i] == typeC)
                    q[i] += _delta_qC;
         }
@@ -635,7 +639,7 @@ void ComputeThermoInteg::set_delta_qC()
    for (int i = 0; i < nlocal; i++)
    {
       if (type[i] == typeC)
-          selected_counts_local[ntypesA + ntypesB]++;
+          selected_counts_local[ntypeAs + ntypeBs]++;
       for (int k = 0; k < ntypeAs; k++)
           if (type[i] == typeAs[k])
               selected_counts_local[k]++;
@@ -657,7 +661,7 @@ void ComputeThermoInteg::set_delta_qC()
       delta_qC -= lA_qs[k] * static_cast<double>(selected_counts[k]);
    for (int k = 0; k < ntypeBs; k++)
       delta_qC += lA_qs[k] * static_cast<double>(selected_counts[ntypeAs+k]);
-   delta_qC /= static_cast<double>(selected_counts[ntypeAs+typeBs]);
+   delta_qC /= static_cast<double>(selected_counts[ntypeAs+ntypeBs]);
        
    delete [] selected_counts_local;
    delete [] selected_counts;
