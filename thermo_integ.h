@@ -54,9 +54,10 @@ class ComputeThermoInteg : public Compute {
   int typeC;
 
   // Pair style parameters
-  char * pstyle, * pparam;
-  Pair * pair;
-  int pdim;
+  char * pstyle;
+  char ** pparams;
+  Pair ** pairs;
+  int * pdims;
 
 
   class Fix *fixgpu;
