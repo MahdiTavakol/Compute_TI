@@ -116,8 +116,7 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
         {
             parameter_list |= PAIR;
             pstyle = utils::strdup(arg[iarg + 1]);
-            pparam = utils::strdup(arg[iarg + 2]);
-            iarg += 2;
+            iarg += 1;
             lA_ps = new double[ntypeAs];  //NEGATIVE
             lB_ps = new double[ntypeAs];  //POSITIVE
             pparams = new char*[ntypeAs];
