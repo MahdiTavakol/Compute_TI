@@ -54,6 +54,7 @@ class ComputeThermoInteg : public Compute {
   int typeC;
 
   // Pair style parameters
+  bool per_atom_epsilon;
   char * pstyle;
   Pair * pair;
   char ** pparams;
