@@ -120,16 +120,32 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
             iarg += 2;
             lA_ps = new double[ntypeAs];  //NEGATIVE
             lB_ps = new double[ntypeAs];  //POSITIVE
-            for (int k = 0; k < ntypeAs; k++)
-            {
-               double p_initial, p_final;
-               char * pparam = utils::strdup(arg[iarg],false,lmp);
-               p_initial = utils::numeric(FLERR, arg[iarg+1], false, lmp);
-               p_final = utils::numeric(FLERR, arg[iarg+2], false, lmp);
-               pparams[k] = pparam;
-               lA_ps[k] = -(p_final - p_initial) * dlambda;
-               lB_ps[k] = (p_final - p_initial) * dlambda;
-               iarg+=3;
+            pparams = new char*[ntypeAs];
+
+            if (utils::is_double(arg[iarg],false,lmp) == false) {
+               for (int k = 0; k < ntypeAs; k++)
+               {
+                  per_atom_epsilon = true;
+                  double p_initial, p_final;
+                  char * pparam = utils::strdup(arg[iarg],false,lmp);
+                  p_initial = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+                  p_final = utils::numeric(FLERR, arg[iarg+2], false, lmp);
+                  pparams[k] = pparam;
+                  lA_ps[k] = -(p_final - p_initial) * dlambda;
+                  lB_ps[k] = (p_final - p_initial) * dlambda;
+                  iarg+=3;
+               }
+            } else {
+               for (int k = 0; k < ntypeAs; k++)
+               {
+                  per_atom_epsilon = false;
+                  double p_initial, p_final;
+                  p_initial = utils::numeric(FLERR, arg[iarg], false, lmp);
+                  p_final = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+                  lA_ps[k] = -(p_final - p_initial) * dlambda;
+                  lB_ps[k] = (p_final - p_initial) * dlambda;
+                  iarg+=2;
+               }
             }
         }
         else if (strcmp(arg[iarg], "charge") == 0)
@@ -179,18 +195,18 @@ ComputeThermoInteg::~ComputeThermoInteg()
 
     delete[] typeAs;
     if (mode & DUAL)  delete[] typeBs;
-    if (parameter_list & PAIR)
-    {
+    if (parameter_list & PAIR) {
        delete[] lA_ps;
        delete[] lB_ps;
     }
-    if (parameter_list & CHARGE)
-    {
+    if (parameter_list & CHARGE) {
        delete[] lA_qs;
        delete[] lB_qs;     
     }
-
-    delete[] pparam;
+    for (int i = 0; i < ntypeAs; i++) {
+       delete [] pparams[i];
+    }
+    delete[] pparams;
     delete[] pstyle;
     delete[] vector;
 }
@@ -206,22 +222,24 @@ void ComputeThermoInteg::setup()
           pair = force->pair_match(std::string(pstyle) + "/" + lmp->suffix, 1);
        if (pair == nullptr)
           pair = force->pair_match(pstyle, 1); // I need to define the pstyle variable
-       void* ptr1 = pair->extract(pparam, pdim);
-       if (ptr1 == nullptr)
-          error->all(FLERR, "Compute TI pair style {} was not found", pstyle);
-       if (pdim != 2)
-          error->all(FLERR, "Pair style parameter {} is not compatible with compute TI", pparam);
-
-       epsilon = (double**)ptr1;
 
        int ntypes = atom->ntypes;
-       memory->create(epsilon_init, ntypes + 1, ntypes + 1, "compute_TI:epsilon_init");
+       memory->create(epsilon_inits, ntypeAs, ntypes + 1, ntypes + 1, "compute_TI:epsilon_inits");
+       
+       for (int k = 0; k < ntypeAs; k++)
+       {
+          void* ptr1 = pair->extract(pparams[k], pdim);
+          if (ptr1 == nullptr)
+             error->all(FLERR, "Compute TI pair style {} was not found", pstyle);
+          if (pdim != 2)
+             error->all(FLERR, "Pair style parameter {} is not compatible with compute TI", pparam);
 
+          epsilons[k] = (double**)ptr1;
        
-       for (int i = 0; i < ntypes + 1; i++)
-          for (int j = i; j < ntypes + 1; j++)
-             epsilon_init[i][j] = epsilon[i][j];
-       
+          for (int i = 0; i < ntypes + 1; i++)
+             for (int j = i; j < ntypes + 1; j++)
+                 epsilon_inits[k][i][j] = epsilons[k][i][j];
+       }
     }
   
     int nmax = atom->nmax;     
@@ -233,11 +251,10 @@ void ComputeThermoInteg::setup()
 
 void ComputeThermoInteg::init()
 {
-    if ((parameter_list & PAIR) && !strcmp(pparam,"NULL"))
+    if ((parameter_list & PAIR) && !per_atom_epsilon)
     {
-
         std::map<std::string, std::string> pair_params;
-
+       
         pair_params["lj/cut/soft/omp"] = "lambda";
         pair_params["lj/cut/coul/cut/soft/gpu"] = "lambda";
         pair_params["lj/cut/coul/cut/soft/omp"] = "lambda";
@@ -282,8 +299,11 @@ void ComputeThermoInteg::init()
         if (pair_params.find(pstyle) == pair_params.end())
             error->all(FLERR, "The pair style {} is not currently supported in fix constant_pH", pstyle);
 
-        pparam = new char[pair_params[pstyle].length() + 1];
-        std::strcpy(pparam, pair_params[pstyle].c_str());
+       
+        for (int i = 0; i < ntypeAs; i++) {
+            pparams[i] = new char[pair_params[pstyle].length() + 1];
+            std::strcpy(pparams[i], pair_params[pstyle].c_str());
+        }
     }
 
 }
@@ -408,35 +428,35 @@ void ComputeThermoInteg::modify_epsilon_q()
            int typeA = typeAs[k];
            double& delta_p = (direction == NEGATIVE) ? lA_ps[k] : lB_ps[k];
            for (int j = 1; j < typeA; j++)
-               if (epsilon_init[j][typeA] < -delta_p)
+               if (epsilon_inits[k][j][typeA] < -delta_p)
                {
-                     if (epsilon[j][j] == 0) continue;
+                     if (epsilons[k][j][j] == 0) continue;
                      bad_i = typeA;
                      bad_j = j;
                      modified_delta = true;
-                     delta_p = -epsilon_init[j][typeA];
+                     delta_p = -epsilon_inits[k][j][typeA];
                }
            for (int j = typeA; j < ntypes + 1; j++)
-               if (epsilon_init[typeA][j] < -delta_p)
+               if (epsilon_inits[k][typeA][j] < -delta_p)
                {
-                     if (epsilon[j][j] == 0) continue;
+                     if (epsilons[k][j][j] == 0) continue;
                      bad_i = typeA;
                      bad_j = j;
                      modified_delta = true;
-                     delta_p = -epsilon_init[typeA][j];
+                     delta_p = -epsilon_inits[k][typeA][j];
                }
            if (modified_delta) 
            {
                error->warning(FLERR,"The delta value in compute_TI has been modified to {} since it is less than epsilon({},{})", delta_p, bad_i,bad_j);
            }
-           epsilon[typeA][typeA] = epsilon_init[typeA][typeA] + delta_p;
+           epsilons[k][typeA][typeA] = epsilon_inits[k][typeA][typeA] + delta_p;
         }
 
         for (int k = 0; k < ntypeAs; k++)
            for (int i = 0; i < ntypes + 1 ; i++)
                for (int j = i; j < ntypes + 1; j++)
                    if (i == typeAs[k] || j == typeAs[k])
-                       epsilon[i][j] = sqrt(epsilon[i][i]*epsilon[j][j]);
+                       epsilons[k][i][j] = sqrt(epsilons[k][i][i]*epsilons[k][j][j]);
         
         pair->reinit();
     }
