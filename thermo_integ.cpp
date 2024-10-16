@@ -117,17 +117,19 @@ ComputeThermoInteg::ComputeThermoInteg(LAMMPS* lmp, int narg, char** arg) : Comp
             parameter_list |= PAIR;
             pstyle = utils::strdup(arg[iarg + 1]);
             pparam = utils::strdup(arg[iarg + 2]);
-            iarg += 3;
+            iarg += 2;
             lA_ps = new double[ntypeAs];  //NEGATIVE
             lB_ps = new double[ntypeAs];  //POSITIVE
             for (int k = 0; k < ntypeAs; k++)
             {
                double p_initial, p_final;
-               p_initial = utils::numeric(FLERR, arg[iarg], false, lmp);
-               p_final = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               char * pparam = utils::strdup(arg[iarg],false,lmp);
+               p_initial = utils::numeric(FLERR, arg[iarg+1], false, lmp);
+               p_final = utils::numeric(FLERR, arg[iarg+2], false, lmp);
+               pparams[k] = pparam;
                lA_ps[k] = -(p_final - p_initial) * dlambda;
                lB_ps[k] = (p_final - p_initial) * dlambda;
-               iarg+=2;
+               iarg+=3;
             }
         }
         else if (strcmp(arg[iarg], "charge") == 0)
@@ -231,7 +233,7 @@ void ComputeThermoInteg::setup()
 
 void ComputeThermoInteg::init()
 {
-    if (parameter_list & PAIR)
+    if ((parameter_list & PAIR) && !strcmp(pparam,"NULL"))
     {
 
         std::map<std::string, std::string> pair_params;
