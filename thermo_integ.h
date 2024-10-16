@@ -55,18 +55,18 @@ class ComputeThermoInteg : public Compute {
 
   // Pair style parameters
   char * pstyle;
+  Pair * pair;
   char ** pparams;
-  Pair ** pairs;
-  int * pdims;
+  int  pdim;
 
 
   class Fix *fixgpu;
 
   // This is just a pointer to the non-bonded interaction parameters and does not have any allocated memory
   // This should not be deallocated since the original pointer will be deallocated later on by the LAMMPS
-  double **epsilon;
+  double ***epsilons;
   // _init is the initial value of selected atom properties which is multiplied by lambda at each step
-  double **epsilon_init;
+  double ***epsilon_inits;
 
   // _org is for value of parameters before the update_lmp() with modified parameters act on them
   double *q_orig;
